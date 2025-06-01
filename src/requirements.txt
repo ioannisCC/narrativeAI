@@ -1,0 +1,9 @@
+crewai>=0.67.0
+openai>=1.50.0
+python-dotenv>=1.0.0
+crewai-tools==0.1.6
+colorama==0.4.6
+rich==13.7.0
+
+streamlit>=1.39.0
+typing-extensions==4.8.0
