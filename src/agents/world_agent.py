@@ -1,8 +1,3 @@
-"""
-World Agent - Environmental Designer & Setting Creator
-Responsible for creating immersive worlds and environments
-"""
-
 from crewai import Agent
 from typing import Dict, Any
 

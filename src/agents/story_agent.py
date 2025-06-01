@@ -1,8 +1,3 @@
-"""
-Story Agent - Narrative Director & Plot Weaver
-Responsible for main storyline, plot progression, and meaningful choices
-"""
-
 from crewai import Agent
 from typing import List, Dict, Any
 
@@ -46,7 +41,7 @@ class StoryAgent:
         Returns:
             Next plot development and story progression
         """
-        history_context = "; ".join(story_history[-3:])  # Last 3 story beats
+        history_context = "; ".join(story_history[-3:])
         
         task_description = f"""
         Develop the next plot progression based on the player's choice.

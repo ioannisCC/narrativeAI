@@ -1,8 +1,3 @@
-"""
-Character Agent - Character Creator & Personality Manager
-Responsible for creating NPCs and managing character interactions
-"""
-
 from crewai import Agent
 from typing import Dict, List, Any
 

@@ -14,10 +14,11 @@ class CoordinatorAgent:
     between all other agents and managing the overall game flow and state.
     """
     
-    def __init__(self, world_agent, character_agent, story_agent, llm=None):
+    def __init__(self, world_agent, character_agent, story_agent, image_agent=None, llm=None):
         self.world_agent = world_agent
         self.character_agent = character_agent  
         self.story_agent = story_agent
+        self.image_agent = image_agent  # Add image agent
         
         # Game state tracking
         self.story_history = []
@@ -64,13 +65,15 @@ class CoordinatorAgent:
         # Reset game state
         self.story_history = []
         self.player_choices = []
+        self.current_theme = story_theme  # STORE THE THEME!
         self.game_state = {
             "turn": 0,
             "location": "starting_area",
             "characters_present": [],
             "inventory": [],
             "relationships": {},
-            "plot_flags": {}
+            "plot_flags": {},
+            "theme": story_theme  # STORE THEME IN GAME STATE
         }
         
         # Create initial story setup
@@ -106,6 +109,126 @@ class CoordinatorAgent:
         
         return str(result)
     
+    def _get_theme_instructions(self, theme: str, choice: str) -> str:
+        """
+        Get theme-appropriate instructions for agents
+        """
+        
+        theme_configs = {
+            "fantasy_adventure": {
+                "genre": "FANTASY ADVENTURE",
+                "elements": "magic, swords, dragons, castles, wizards, medieval settings",
+                "avoid": "modern technology, sci-fi elements"
+            },
+            "steampunk_adventure": {
+                "genre": "STEAMPUNK ADVENTURE", 
+                "elements": "steam, brass, gears, airships, Victorian technology, clockwork",
+                "avoid": "fantasy magic, modern electronics"
+            },
+            "horror_survival": {
+                "genre": "HORROR SURVIVAL",
+                "elements": "darkness, fear, survival, psychological tension, monsters, abandoned places",
+                "avoid": "comedy, bright cheerful settings"
+            },
+            "sci_fi_exploration": {
+                "genre": "SCI-FI EXPLORATION",
+                "elements": "space, technology, aliens, futuristic cities, starships, advanced science",
+                "avoid": "medieval fantasy, steampunk"
+            },
+            "mystery_detective": {
+                "genre": "MYSTERY DETECTIVE",
+                "elements": "clues, investigation, suspects, crime scenes, deduction, noir atmosphere",
+                "avoid": "action movie elements, fantasy magic"
+            },
+            "modern_thriller": {
+                "genre": "MODERN THRILLER",
+                "elements": "contemporary settings, espionage, chase scenes, modern technology, suspense",
+                "avoid": "fantasy elements, historical settings"
+            }
+        }
+        
+        config = theme_configs.get(theme, theme_configs["fantasy_adventure"])
+        
+        return f"""
+        CRITICAL: This is a {config['genre']} story. Maintain genre consistency!
+        
+        CURRENT SPECIFIC STORY CONTEXT:
+        - Character: {self._get_current_character()}
+        - Setting: {self._get_current_setting()}
+        - Situation: {self._get_current_situation()}
+        - Player Choice: {choice} 
+        - What this choice means: {self._interpret_choice(choice)}
+        
+        RECENT STORY EVENTS:
+        {self.story_history[-2:] if len(self.story_history) > 1 else ['Story just started']}
+        
+        COORDINATE WITH ALL AGENTS TO CONTINUE THIS SPECIFIC STORY:
+        
+        1. World Agent: Describe what happens in the current setting when player does: {choice}
+           - Current location: {self._get_current_setting()}
+           - Show the result of the player's action
+           - Include: {config['elements']}
+           - AVOID: {config['avoid']}
+        
+        2. Character Agent: Show how characters react to the player's choice: {choice}
+           - Continue interactions with established characters
+           - Show dialogue and reactions specific to this situation
+        
+        3. Story Agent: Advance the plot based on this specific choice: {choice}
+           - Show immediate consequences of this action
+           - Advance THIS specific storyline
+           - Create new choices that follow logically from this situation
+        
+        SYNTHESIZE ALL INTO COHERENT {config['genre']} SCENE that directly follows from:
+        Player choosing to: {choice}
+        
+        MAINTAIN STORY CONTINUITY - don't jump to different locations or situations!
+        """
+    
+    def _get_current_character(self) -> str:
+        """Extract current character from recent story"""
+        # Look for character mentions in recent story
+        recent = " ".join(self.story_history[-3:]) if self.story_history else ""
+        if "Detective Alex Morgan" in recent:
+            return "Detective Alex Morgan"
+        elif "Emily" in recent:
+            return "Emily"
+        elif "Amelia Lockhart" in recent:
+            return "Amelia Lockhart"
+        return "the protagonist"
+    
+    def _get_current_setting(self) -> str:
+        """Extract current setting from recent story"""
+        recent = " ".join(self.story_history[-3:]).lower() if self.story_history else ""
+        if "alley" in recent:
+            return "dark alley"
+        elif "asylum" in recent:
+            return "abandoned asylum"
+        elif "tavern" in recent:
+            return "clockwork tavern"
+        elif "ironspire" in recent:
+            return "Ironspire city"
+        return "current location"
+    
+    def _get_current_situation(self) -> str:
+        """Extract current situation from recent story"""
+        recent = " ".join(self.story_history[-3:]) if self.story_history else ""
+        # Extract key situation elements
+        return recent[-200:] if recent else "story beginning"
+    
+    def _interpret_choice(self, choice: str) -> str:
+        """Interpret what the player's choice means in context"""
+        choice_lower = choice.lower()
+        if "stealth" in choice_lower or "sneak" in choice_lower or choice == "3":
+            return "player is trying to approach quietly/secretly"
+        elif "confront" in choice_lower or choice == "1":
+            return "player is being direct/aggressive"
+        elif "observe" in choice_lower or choice == "2":
+            return "player is being cautious/watching"
+        elif "investigate" in choice_lower:
+            return "player is looking for clues/evidence"
+        return f"player chose: {choice}"
+    
     def process_player_choice(self, choice: str, choice_index: int = None) -> str:
         """
         Process a player choice through all agents and generate the next scene
@@ -121,30 +244,15 @@ class CoordinatorAgent:
         self.player_choices.append(choice)
         self.game_state["turn"] += 1
         
+        # Get theme information for consistency
+        current_theme = getattr(self, 'current_theme', self.game_state.get('theme', 'unknown'))
+        
+        # Create theme-appropriate instructions
+        theme_instructions = self._get_theme_instructions(current_theme, choice)
+        
         # Create coordinated response using all agents
         coordination_task = Task(
-            description=f"""
-            Process the player's choice and create the next scene in coordination 
-            with all specialist agents.
-            
-            Player Choice: {choice}
-            Current Story State: {self.game_state}
-            Recent History: {self.story_history[-3:] if self.story_history else []}
-            
-            Coordinate with:
-            1. World Agent: Get environmental description and location features
-            2. Character Agent: Handle any character interactions or introductions  
-            3. Story Agent: Advance plot and create meaningful consequences
-            
-            Synthesize all contributions into:
-            - Environmental description (from World Agent)
-            - Character interactions (from Character Agent) 
-            - Plot progression (from Story Agent)
-            - 3-4 new meaningful choices for the player
-            
-            Ensure the scene flows naturally and player choice has clear impact.
-            Maintain story consistency and build toward interesting developments.
-            """,
+            description=theme_instructions,
             agent=self.agent,
             expected_output="Complete scene description with new player choices"
         )
@@ -165,6 +273,27 @@ class CoordinatorAgent:
         # Update story history
         self.story_history.append(f"Player chose: {choice}")
         self.story_history.append(f"Result: {str(result)[:100]}...")
+        
+        # Generate image for this turn if image agent available
+        if self.image_agent:
+            try:
+                print("🎨 Generating artistic image for this scene...")
+                image_info = self.image_agent.create_scene_image(
+                    story_content=str(result),
+                    turn_number=self.game_state["turn"],
+                    location=self.game_state.get("location", "unknown"),
+                    characters_present=self.game_state.get("characters_present", []),
+                    mood="mysterious"  # Could be extracted from story context
+                )
+                
+                if image_info.get("success"):
+                    print(f"✅ Image created: {image_info['filename']}")
+                    self.game_state["last_image"] = image_info["filepath"]
+                else:
+                    print(f"⚠️ Image generation failed: {image_info.get('error', 'Unknown error')}")
+                    
+            except Exception as e:
+                print(f"⚠️ Image generation error: {e}")
         
         return str(result)
     
