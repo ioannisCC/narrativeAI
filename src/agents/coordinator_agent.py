@@ -11,39 +11,6 @@ class GetFullGameStateTool(BaseTool):
         """Get the complete current game state"""
         return game_state.to_json()
 
-class ParseUserActionTool(BaseTool):
-    name: str = "parse_user_action"
-    description: str = "Parse user input to determine what type of action they want to perform"
-    
-    def _run(self, user_input: str) -> str:
-        """Parse user input and determine what type of action it represents."""
-        user_input = user_input.lower().strip()
-        
-        # Determine action type
-        if any(word in user_input for word in ["go", "move", "walk", "travel", "north", "south", "east", "west"]):
-            action_type = "movement"
-        elif any(word in user_input for word in ["talk", "speak", "say", "ask", "greet"]):
-            action_type = "dialogue"
-        elif any(word in user_input for word in ["look", "examine", "inspect", "search", "explore"]):
-            action_type = "exploration"
-        elif any(word in user_input for word in ["take", "get", "pick", "grab", "use"]):
-            action_type = "interaction"
-        elif any(word in user_input for word in ["help", "what", "where", "how", "who"]):
-            action_type = "help"
-        else:
-            action_type = "general"
-        
-        result = {
-            "action_type": action_type,
-            "original_input": user_input,
-            "requires_world": action_type in ["movement", "exploration", "interaction"],
-            "requires_character": action_type in ["dialogue"],
-            "requires_story": True,  # Story always needed for narrative coherence
-            "priority": "high" if action_type == "movement" else "medium"
-        }
-        
-        return json.dumps(result, indent=2)
-
 class GetCurrentSceneTool(BaseTool):
     name: str = "get_current_scene"
     description: str = "Get detailed description of the current game scene"
@@ -80,54 +47,142 @@ class LogGameEventTool(BaseTool):
         game_state.log_event(event)
         return f"Logged: {event}"
 
+class UpdatePlayerLocationTool(BaseTool):
+    name: str = "update_player_location"
+    description: str = "Move the player to a new location"
+    
+    def _run(self, location_name: str) -> str:
+        """Move player to a new location"""
+        try:
+            game_state.set_current_location(location_name)
+            return f"Player moved to: {location_name}"
+        except Exception as e:
+            return f"Error moving player: {str(e)}"
+
+class CreateBasicLocationTool(BaseTool):
+    name: str = "create_basic_location"
+    description: str = "Create a simple location if it doesn't exist"
+    
+    def _run(self, location_info: str) -> str:
+        """Create a basic location"""
+        try:
+            # Handle JSON string input
+            if isinstance(location_info, str):
+                try:
+                    data = json.loads(location_info)
+                except json.JSONDecodeError:
+                    # Simple name: description format
+                    if ":" in location_info:
+                        parts = location_info.split(":", 1)
+                        name = parts[0].strip()
+                        description = parts[1].strip()
+                    else:
+                        name = location_info.strip()
+                        description = f"A new area of the forest."
+                    
+                    data = {
+                        "name": name,
+                        "description": description,
+                        "exits": ["back"],
+                        "items": []
+                    }
+            else:
+                data = location_info
+            
+            location_name = data.get("name")
+            game_state.add_location(location_name, data)
+            return f"Created location: {location_name}"
+        except Exception as e:
+            return f"Error creating location: {str(e)}"
+
 def create_game_coordinator_agent():
-    """Create the Coordinator Agent with tools"""
+    """Create the Coordinator Agent with basic tools"""
     
     game_coordinator = Agent(
         role="Coordinator Agent",
-        goal="Intelligently orchestrate the entire game experience by analyzing user input and coordinating only the necessary agents",
-        backstory="""You are the master game coordinator who ensures smooth gameplay by 
-        intelligently analyzing what the user wants to do and determining which specialist agents 
-        need to be involved. You avoid unnecessary work by only activating agents when their 
-        expertise is truly needed. You understand the overall game flow and ensure efficient, 
-        targeted responses that create engaging interactive fiction experiences.""",
+        goal="Handle user requests intelligently, honor player choices, and delegate only when necessary",
+        backstory="""You are the master game coordinator who ensures player choices are ALWAYS honored.
+        
+        CRITICAL RULES:
+        1. ALWAYS respect and follow through on player choices - never ignore them
+        2. When players choose numbered options, record their choice and follow that path
+        3. Use simple tool inputs - pass plain text strings, never JSON objects
+        4. Only delegate to specialists for complex tasks like detailed NPCs or elaborate story events
+        
+        You have access to game context, player state, location data, story progression, and turn information.
+        Always provide rich, immersive responses that honor what the player chose to do.""",
         tools=[
             GetFullGameStateTool(),
-            ParseUserActionTool(),
             GetCurrentSceneTool(),
-            LogGameEventTool()
+            LogGameEventTool(),
+            UpdatePlayerLocationTool(),
+            CreateBasicLocationTool()
         ],
         verbose=True,
-        allow_delegation=True  # This agent can delegate to others
+        allow_delegation=True
     )
     
     return game_coordinator
 
 def create_coordination_task(user_input: str):
-    """Create a task for the Coordinator Agent"""
+    """Create a smart coordination task that lets the LLM decide what to do"""
+    
+    # Get turn information for context
+    turn_info = game_state.get_turn_info()
+    turn_context = ""
+    
+    if turn_info['current_turn'] > 0:
+        turn_context = f"""
+        
+        TURN PROGRESSION AWARENESS:
+        • Current Turn: {turn_info['current_turn']}/{turn_info['max_turns']} 
+        • Phase: {turn_info['phase']} 
+        • Turns Remaining: {turn_info['turns_remaining']}
+        • {"⚠️  FINAL TURN - Must conclude the adventure!" if turn_info['turns_remaining'] <= 1 else ""}
+        
+        PACING GUIDANCE:
+        - Beginning phase (1-1): World-building, discovery, setup
+        - Middle phase (2-3): Challenges, character development, complications  
+        - Late phase (4): Build toward climax, increase stakes
+        - Climax phase (5): Epic conclusion, resolve all plot threads
+        
+        Adjust your response and any delegated tasks to match the current story phase.
+        """
     
     task = Task(
         description=f"""
         INTELLIGENT COORDINATION TASK
         User Input: "{user_input}"
+        {turn_context}
         
-        Your job is to:
-        1. Use parse_user_action to analyze what the user wants to do
-        2. Use get_current_scene to understand the current context
-        3. Use get_full_game_state to see the complete game state
-        4. Determine which specialist agents (if any) need to be involved:
-           - World Agent: Only for movement, exploration, or location changes
-           - Character Agent: Only for character interactions or dialogue
-           - Story Agent: Only when narrative events need to happen
+        Your job is to handle this request efficiently using your understanding of the game context.
         
-        IMPORTANT: Be efficient! Don't involve agents unless truly necessary.
-        For simple queries like "look around" or "status", handle them yourself.
+        AVAILABLE TOOLS:
+        • get_full_game_state - See complete game state including player, locations, characters, story
+        • get_current_scene - Get detailed current location and scene information  
+        • log_game_event - Record important events
+        • update_player_location - Move player to new location
+        • create_basic_location - Create simple locations as needed
         
-        Create a comprehensive response that addresses the user's request.
-        If you need specialist help, delegate specific tasks to the appropriate agents.
+        DECISION PROCESS:
+        1. Use get_current_scene and/or get_full_game_state to understand the current context
+        2. Consider the turn progression when crafting responses and making decisions
+        3. Decide if you can handle this request directly:
+           - Simple movement (north, south, east, west) → Use your tools to move player and describe
+           - Basic exploration (look around) → Use current scene to provide rich description
+           - Status/help requests → Use game state to provide information
+        4. OR if you need specialist expertise, delegate to:
+           - World Agent: Complex location design, detailed environments
+           - Character Agent: NPC dialogue, character interactions  
+           - Story Agent: Complex narrative events, story choices (include turn context!)
+        
+        GOAL: Provide an engaging, immersive response that makes the game world feel alive.
+        Use your tools creatively to handle requests directly when possible, or delegate when you need 
+        specialist expertise. Always give rich, descriptive responses that enhance the player experience
+        and match the current story pacing phase.
         """,
         agent=create_game_coordinator_agent(),
-        expected_output="A comprehensive game response that efficiently addresses the user's input using only necessary agents"
+        expected_output="An engaging response that either handles the request directly using available tools or coordinates with specialists as needed, with appropriate pacing for the current turn"
     )
     
     return task

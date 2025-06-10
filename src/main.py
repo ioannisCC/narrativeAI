@@ -17,11 +17,11 @@ def display_welcome():
     print("A Multi-Agent Storytelling Experience")
     print("="*60)
     print("\nWelcome to an interactive fiction adventure powered by AI agents!")
-    print("\nOur crew of specialized agents will create your story:")
-    print("🏗️  World Builder - Creates locations and environments")
+    print("\nOur intelligent coordinator manages a crew of specialists:")
+    print("🎯 Game Coordinator - Intelligently handles requests and delegates when needed")
+    print("🏗️  World Builder - Creates detailed locations and environments") 
     print("👥 Character Manager - Manages NPCs and dialogue")
     print("📖 Story Director - Handles plot and choices")
-    print("🎯 Game Coordinator - Orchestrates everything")
     print("\n" + "-"*60)
     print("\nCommands you can try:")
     print("• 'look around' - examine your surroundings")
@@ -33,17 +33,23 @@ def display_welcome():
     print("• 'help' - get assistance")
     print("• 'quit' - exit the game")
     print("-"*60)
+    print("\n🎲 Your adventure is limited to 5 turns - make them count!")
 
 def display_game_state():
     """Display current game state in a user-friendly format"""
     state = game_state.get_state()
     player = state["player"]
+    turn_info = game_state.get_turn_info()
     
     print(f"\n📊 Player Status:")
     print(f"   Name: {player['name']}")
     print(f"   Location: {player['location'].replace('_', ' ').title()}")
     print(f"   Health: {player['health']}")
     print(f"   Items: {', '.join(player['inventory']) if player['inventory'] else 'None'}")
+    print(f"   Turn: {turn_info['current_turn']}/{turn_info['max_turns']} ({turn_info['phase']} phase)")
+    
+    if turn_info['turns_remaining'] <= 1:
+        print(f"   ⚠️  WARNING: Only {turn_info['turns_remaining']} turn(s) remaining!")
 
 def initialize_player():
     """Initialize player information"""
@@ -147,8 +153,34 @@ def main():
                 print("Please enter a command. Type 'help' for assistance.")
                 continue
             
-            # Process input through the intelligent agent system
-            print("\n🤖 Analyzing your request...")
+            # Check if game has ended
+            if game_state.is_game_ended():
+                print(f"\n🎭 THE END")
+                print("=" * 60)
+                print("Your adventure has reached its conclusion! The story of your")
+                print("journey through the mystical forest will be remembered forever.")
+                print("=" * 60)
+                print(f"📊 Final Statistics:")
+                turn_info = game_state.get_turn_info()
+                print(f"   • Turns completed: {turn_info['current_turn']}")
+                print(f"   • Locations explored: {len(game_state.get_state()['world']['locations'])}")
+                print(f"   • Characters met: {len(game_state.get_state()['characters'])}")
+                print(f"   • Story events: {len(game_state.get_state()['story']['events'])}")
+                print("=" * 60)
+                break
+            
+            # Increment turn counter (except for special commands)
+            game_state.increment_turn()
+            turn_info = game_state.get_turn_info()
+            
+            print(f"\n🎲 Turn {turn_info['current_turn']}/{turn_info['max_turns']} ({turn_info['phase']} phase)")
+            if turn_info['turns_remaining'] <= 1:
+                print(f"⚠️  This is your final turn!")
+            elif turn_info['turns_remaining'] <= 2:
+                print(f"⚠️  Only {turn_info['turns_remaining']} turns remaining!")
+            
+            # Process input through the intelligent coordinator system
+            print("\n🎯 Coordinator processing your request...")
             print("-" * 50)
             
             response = fiction_crew.process_user_input(user_input)

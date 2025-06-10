@@ -5,7 +5,7 @@ from game_state import game_state
 
 class CreateLocationTool(BaseTool):
     name: str = "create_location"
-    description: str = "Create a new location in the game world with name, description, exits, and items"
+    description: str = "Create a new location in the game world. Pass JSON string with name, description, exits, and items"
     
     def _run(self, location_info: str) -> str:
         """Create a new location in the game world."""

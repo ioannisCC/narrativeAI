@@ -63,11 +63,17 @@ class GameState:
                 "events": [],
                 "choices_made": []
             },
-            "game_log": []
+            "game_log": [],
+            "turn_counter": {
+                "current_turn": 0,
+                "max_turns": 5,
+                "game_ended": False
+            }
         }
         self.session_start = datetime.now()
         self.log_filename = log_filename
         logging.info("=== NEW GAME SESSION STARTED ===")
+        logging.info(f"Game configured for {self.state['turn_counter']['max_turns']} turns")
     
     def get_state(self) -> Dict[str, Any]:
         """Get current game state"""
@@ -122,6 +128,48 @@ class GameState:
         timestamped_event = f"[{datetime.now().strftime('%H:%M:%S')}] {event}"
         self.state["game_log"].append(timestamped_event)
     
+    def increment_turn(self):
+        """Increment the turn counter and check for game end"""
+        self.state["turn_counter"]["current_turn"] += 1
+        current = self.state["turn_counter"]["current_turn"]
+        max_turns = self.state["turn_counter"]["max_turns"]
+        
+        logging.info(f"TURN_INCREMENT: Turn {current}/{max_turns}")
+        self.log_event(f"Turn {current} begins")
+        
+        # Check if game should end
+        if current >= max_turns:
+            self.state["turn_counter"]["game_ended"] = True
+            logging.info("GAME_END: Maximum turns reached")
+            self.log_event("Game reaches its conclusion")
+    
+    def get_turn_info(self) -> dict:
+        """Get turn information and progress"""
+        turn_data = self.state["turn_counter"]
+        progress = turn_data["current_turn"] / turn_data["max_turns"]
+        
+        if progress <= 0.2:
+            phase = "beginning"
+        elif progress <= 0.6:
+            phase = "middle"
+        elif progress <= 0.8:
+            phase = "late"
+        else:
+            phase = "climax"
+            
+        return {
+            "current_turn": turn_data["current_turn"],
+            "max_turns": turn_data["max_turns"],
+            "turns_remaining": turn_data["max_turns"] - turn_data["current_turn"],
+            "progress": progress,
+            "phase": phase,
+            "game_ended": turn_data["game_ended"]
+        }
+    
+    def is_game_ended(self) -> bool:
+        """Check if the game has ended"""
+        return self.state["turn_counter"]["game_ended"]
+    
     def get_current_location_info(self) -> Dict[str, Any]:
         """Get information about current location"""
         current_loc = self.state["player"]["location"]
@@ -130,6 +178,7 @@ class GameState:
     def get_story_summary_data(self) -> Dict[str, Any]:
         """Get comprehensive data for story summarization"""
         session_duration = datetime.now() - self.session_start
+        turn_info = self.get_turn_info()
         
         return {
             "session_info": {
@@ -137,6 +186,7 @@ class GameState:
                 "start_time": self.session_start.strftime('%Y-%m-%d %H:%M:%S'),
                 "log_file": self.log_filename
             },
+            "turn_info": turn_info,
             "player": self.state["player"],
             "locations_visited": list(self.state["world"]["locations"].keys()),
             "characters_met": list(self.state["characters"].keys()),
