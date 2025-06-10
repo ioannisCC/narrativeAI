@@ -65,8 +65,125 @@ def initialize_player():
     print(f"\nWelcome, {player_name}! Your adventure begins now...")
     return player_name
 
+def generate_story_conclusion():
+    """Generate a beautiful story conclusion and full adventure summary"""
+    print("\n" + "="*80)
+    print("🎭 GENERATING YOUR ADVENTURE EPILOGUE...")
+    print("="*80)
+    
+    try:
+        # Create Story Agent to generate the conclusion
+        from agents.story_agent import create_story_director_agent, create_story_task
+        from crewai import Crew, Process
+        
+        story_agent = create_story_director_agent()
+        
+        # Create conclusion task
+        conclusion_task = create_story_task(
+            "conclude adventure",
+            """Create a beautiful, satisfying conclusion to this 5-turn adventure.
+            
+            Use the create_story_narrative tool to generate:
+            1. A compelling epilogue that wraps up the story based on the player's choices and journey
+            2. A complete narrative summary that shows how the story developed through player interactions
+            3. Meaningful reflection on the adventure's themes and the player's decisions
+            
+            Make this feel like the conclusion of an epic tale that honors the player's journey."""
+        )
+        
+        # Generate the conclusion
+        conclusion_crew = Crew(
+            agents=[story_agent],
+            tasks=[conclusion_task],
+            process=Process.sequential,
+            verbose=False
+        )
+        
+        conclusion_result = conclusion_crew.kickoff()
+        
+        # Display the beautiful conclusion
+        print("\n🌟 YOUR ADVENTURE EPILOGUE:")
+        print("="*80)
+        print(conclusion_result)
+        print("="*80)
+        
+        # Generate comprehensive adventure summary
+        summary_task = create_story_task(
+            "create comprehensive summary",
+            """Create a detailed, engaging summary of the complete adventure showing:
+            
+            1. How the story began and the initial setting
+            2. The key decisions the player made and their consequences  
+            3. The locations explored and discoveries made
+            4. How the narrative evolved based on player choices
+            5. The dramatic conclusion and its meaning
+            
+            Write this as an engaging adventure recap that reads like an exciting story summary,
+            highlighting the player's agency and the unique path their choices created."""
+        )
+        
+        summary_crew = Crew(
+            agents=[story_agent],
+            tasks=[summary_task],
+            process=Process.sequential,
+            verbose=False
+        )
+        
+        summary_result = summary_crew.kickoff()
+        
+        print("\n📚 YOUR COMPLETE ADVENTURE STORY:")
+        print("="*80)
+        print(summary_result)
+        print("="*80)
+        
+    except Exception as e:
+        print(f"❌ Error generating story conclusion: {e}")
+        
+        # Fallback: create a basic conclusion
+        state = game_state.get_state()
+        turn_info = game_state.get_turn_info()
+        player_name = state["player"]["name"]
+        
+        print(f"\n🌟 YOUR ADVENTURE EPILOGUE:")
+        print("="*80)
+        print(f"As the adventure draws to a close, {player_name} reflects on the remarkable")
+        print(f"journey that unfolded over {turn_info['current_turn']} meaningful turns.")
+        print(f"Each choice shaped the path, each decision opened new possibilities.")
+        print(f"This tale will be remembered as a unique adventure forged by courage,")
+        print(f"curiosity, and the power of choice.")
+        print("="*80)
+
+def display_final_statistics():
+    """Display comprehensive final statistics"""
+    state = game_state.get_state()
+    turn_info = game_state.get_turn_info()
+    
+    print(f"\n📊 ADVENTURE STATISTICS:")
+    print("="*60)
+    print(f"🎭 Hero: {state['player']['name']}")
+    print(f"⏰ Turns Completed: {turn_info['current_turn']}/{turn_info['max_turns']}")
+    print(f"🗺️  Locations Explored: {len(state['world']['locations'])}")
+    print(f"👥 Characters Met: {len(state['characters'])}")
+    print(f"📜 Story Events: {len(state['story']['events'])}")
+    print(f"⚡ Choices Made: {len(state['story']['choices_made'])}")
+    print(f"🏆 Adventure Phase Reached: {turn_info['phase'].title()}")
+    
+    # Show locations explored
+    if state['world']['locations']:
+        print(f"\n🗺️  Locations Discovered:")
+        for location_name in state['world']['locations'].keys():
+            print(f"   • {location_name.replace('_', ' ').title()}")
+    
+    # Show key choices made
+    if state['story']['choices_made']:
+        print(f"\n⚡ Key Decisions Made:")
+        for i, choice in enumerate(state['story']['choices_made'][-5:], 1):  # Last 5 choices
+            print(f"   {i}. {choice}")
+    
+    print("="*60)
+
 def main():
-    """Main game loop"""
+    """Main game loop with rich final turn processing"""
     
     # Load environment variables
     load_dotenv()
@@ -153,29 +270,15 @@ def main():
                 print("Please enter a command. Type 'help' for assistance.")
                 continue
             
-            # Check if game has ended
-            if game_state.is_game_ended():
-                print(f"\n🎭 THE END")
-                print("=" * 60)
-                print("Your adventure has reached its conclusion! The story of your")
-                print("journey through the mystical forest will be remembered forever.")
-                print("=" * 60)
-                print(f"📊 Final Statistics:")
-                turn_info = game_state.get_turn_info()
-                print(f"   • Turns completed: {turn_info['current_turn']}")
-                print(f"   • Locations explored: {len(game_state.get_state()['world']['locations'])}")
-                print(f"   • Characters met: {len(game_state.get_state()['characters'])}")
-                print(f"   • Story events: {len(game_state.get_state()['story']['events'])}")
-                print("=" * 60)
-                break
-            
             # Increment turn counter (except for special commands)
             game_state.increment_turn()
             turn_info = game_state.get_turn_info()
             
             print(f"\n🎲 Turn {turn_info['current_turn']}/{turn_info['max_turns']} ({turn_info['phase']} phase)")
-            if turn_info['turns_remaining'] <= 1:
-                print(f"⚠️  This is your final turn!")
+            if turn_info['current_turn'] >= turn_info['max_turns']:
+                print(f"🎭 FINAL TURN - Your epic conclusion awaits!")
+            elif turn_info['turns_remaining'] <= 1:
+                print(f"⚠️  Next turn will be your final turn!")
             elif turn_info['turns_remaining'] <= 2:
                 print(f"⚠️  Only {turn_info['turns_remaining']} turns remaining!")
             
@@ -193,6 +296,25 @@ def main():
             # Show updated scene if location might have changed
             if any(word in user_input.lower() for word in ['go', 'move', 'travel', 'enter']):
                 print("\n" + fiction_crew.get_current_scene_description())
+            
+            # Check if this was the final turn and now the game has ended
+            if game_state.is_game_ended():
+                print(f"\n🎊 ADVENTURE COMPLETE! 🎊")
+                print("Your epic 5-turn journey has reached its magnificent conclusion...")
+                
+                # Generate beautiful story conclusion and summary
+                generate_story_conclusion()
+                
+                # Display final statistics
+                display_final_statistics()
+                
+                print(f"\n🙏 Thank you for playing, {player_name}!")
+                print("Your unique adventure will be remembered forever.")
+                print(f"📝 Complete session details saved to: {game_state.log_filename}")
+                
+                # Close logging and exit gracefully
+                game_state.close_logging()
+                break
             
         except KeyboardInterrupt:
             print(f"\n\n👋 Game interrupted. Thanks for playing, {player_name}!")

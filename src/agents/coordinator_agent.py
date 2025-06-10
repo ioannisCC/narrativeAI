@@ -8,17 +8,21 @@ class GetFullGameStateTool(BaseTool):
     description: str = "Get the complete current game state for coordination"
     
     def _run(self) -> str:
-        """Get the complete current game state"""
+        """Get the complete current game state from single source of truth"""
         return game_state.to_json()
 
 class GetCurrentSceneTool(BaseTool):
     name: str = "get_current_scene"
-    description: str = "Get detailed description of the current game scene"
+    description: str = "Get detailed description of the current game scene from game_state"
     
     def _run(self) -> str:
-        """Get description of current game scene"""
+        """Get description of current game scene from single source of truth"""
         state = game_state.get_state()
         current_location = state["player"]["location"]
+        
+        if not current_location:
+            return json.dumps({"error": "No current location set"}, indent=2)
+            
         location_info = state["world"]["locations"].get(current_location, {})
         
         # Get characters in current location
@@ -43,80 +47,145 @@ class LogGameEventTool(BaseTool):
     description: str = "Log important game events for tracking"
     
     def _run(self, event: str) -> str:
-        """Log an important game event"""
+        """Log an important game event to game_state"""
         game_state.log_event(event)
-        return f"Logged: {event}"
+        return f"✅ Logged: {event}"
 
 class UpdatePlayerLocationTool(BaseTool):
     name: str = "update_player_location"
-    description: str = "Move the player to a new location"
+    description: str = "Move the player to a new location (use only if location exists)"
     
     def _run(self, location_name: str) -> str:
-        """Move player to a new location"""
+        """Move player to a new location in game_state"""
         try:
+            # Check if location exists first
+            if not game_state.location_exists(location_name):
+                return f"❌ Cannot move to '{location_name}' - location does not exist in game_state"
+                
             game_state.set_current_location(location_name)
-            return f"Player moved to: {location_name}"
+            return f"✅ Player moved to: {location_name}"
         except Exception as e:
-            return f"Error moving player: {str(e)}"
+            return f"❌ Error moving player: {str(e)}"
 
 class CreateBasicLocationTool(BaseTool):
     name: str = "create_basic_location"
-    description: str = "Create a simple location if it doesn't exist"
+    description: str = "Create a simple location if it doesn't exist (for basic coordinator needs)"
     
     def _run(self, location_info: str) -> str:
-        """Create a basic location"""
+        """Create a basic location and save to game_state"""
         try:
-            # Handle JSON string input
-            if isinstance(location_info, str):
-                try:
-                    data = json.loads(location_info)
-                except json.JSONDecodeError:
-                    # Simple name: description format
-                    if ":" in location_info:
-                        parts = location_info.split(":", 1)
-                        name = parts[0].strip()
-                        description = parts[1].strip()
-                    else:
-                        name = location_info.strip()
-                        description = f"A new area of the forest."
-                    
-                    data = {
-                        "name": name,
-                        "description": description,
-                        "exits": ["back"],
-                        "items": []
-                    }
+            # Handle simple name: description format
+            if ":" in location_info:
+                parts = location_info.split(":", 1)
+                name = parts[0].strip().lower().replace(" ", "_")
+                description = parts[1].strip()
             else:
-                data = location_info
+                name = location_info.strip().lower().replace(" ", "_")
+                description = f"A new area discovered during your adventure."
             
-            location_name = data.get("name")
-            game_state.add_location(location_name, data)
-            return f"Created location: {location_name}"
+            data = {
+                "name": name,
+                "description": description,
+                "exits": ["back"],
+                "items": []
+            }
+            
+            # Save to game_state using the proper method
+            game_state.add_location(name, data)
+            return f"✅ Created basic location '{name}' in game_state"
         except Exception as e:
-            return f"Error creating location: {str(e)}"
+            return f"❌ Error creating location: {str(e)}"
+
+class RecordPlayerChoiceTool(BaseTool):
+    name: str = "record_player_choice"
+    description: str = "Record and honor a critical player choice that must be followed"
+    
+    def _run(self, choice: str) -> str:
+        """Record a critical player choice that MUST be honored"""
+        try:
+            game_state.add_choice_made(choice)
+            game_state.add_story_event(f"CRITICAL PLAYER CHOICE: {choice}")
+            return f"✅ RECORDED CRITICAL CHOICE: {choice} - MUST BE HONORED"
+        except Exception as e:
+            return f"❌ Error recording choice: {str(e)}"
+
+class CheckLocationExistsTool(BaseTool):
+    name: str = "check_location_exists"
+    description: str = "Check if a location exists in the game world before trying to move there"
+    
+    def _run(self, location_name: str) -> str:
+        """Check if a location exists in game_state"""
+        exists = game_state.location_exists(location_name)
+        if exists:
+            return f"✅ Location '{location_name}' exists in game_state"
+        else:
+            available_locations = list(game_state.get_all_locations().keys())
+            return f"❌ Location '{location_name}' does not exist. Available locations: {available_locations}"
+
+class GetWorldLocationsTool(BaseTool):
+    name: str = "get_world_locations"
+    description: str = "Get a list of all available locations in the game world"
+    
+    def _run(self) -> str:
+        """Get all locations from game_state"""
+        locations = game_state.get_all_locations()
+        location_summary = {}
+        
+        for loc_name, loc_data in locations.items():
+            location_summary[loc_name] = {
+                "description": loc_data.get("description", "")[:100] + "..." if len(loc_data.get("description", "")) > 100 else loc_data.get("description", ""),
+                "exits": loc_data.get("exits", []),
+                "item_count": len(loc_data.get("items", []))
+            }
+        
+        return json.dumps(location_summary, indent=2)
 
 def create_game_coordinator_agent():
-    """Create the Coordinator Agent with basic tools"""
+    """Create the Coordinator Agent with enhanced storytelling focus and game_state integration"""
     
     game_coordinator = Agent(
-        role="Coordinator Agent",
-        goal="Handle user requests intelligently, honor player choices, and delegate only when necessary",
-        backstory="""You are the master game coordinator who ensures player choices are ALWAYS honored.
+        role="Master Game Coordinator & Story Director",
+        goal="Create engaging, rich interactive fiction experiences with meaningful choices and compelling narratives using game_state as single source of truth",
+        backstory="""You are a master storyteller and game coordinator who creates immersive, engaging interactive fiction. 
+
+        CORE PHILOSOPHY:
+        - game_state is the SINGLE SOURCE OF TRUTH - all world data lives there
+        - Every scene should have narrative tension, mystery, or intrigue
+        - Players should always have meaningful choices that impact the story
+        - Delegate to specialists when you need rich content beyond basic descriptions
+        - Simple movement should still result in engaging, story-driven responses
         
-        CRITICAL RULES:
-        1. ALWAYS respect and follow through on player choices - never ignore them
-        2. When players choose numbered options, record their choice and follow that path
-        3. Use simple tool inputs - pass plain text strings, never JSON objects
-        4. Only delegate to specialists for complex tasks like detailed NPCs or elaborate story events
+        GAME_STATE INTEGRATION:
+        - Always check current scene and game state before responding
+        - Verify locations exist before moving players
+        - Use tools to read from and write to the shared game_state
+        - Remember that World Agent creates locations, you coordinate access to them
         
-        You have access to game context, player state, location data, story progression, and turn information.
-        Always provide rich, immersive responses that honor what the player chose to do.""",
+        STORYTELLING PRIORITIES:
+        1. ALWAYS provide rich, atmospheric descriptions
+        2. Create story hooks, mysteries, and interesting encounters
+        3. Offer meaningful choices when appropriate
+        4. Delegate to Story Agent for complex narrative development
+        5. Delegate to World Agent for detailed environment creation
+        6. Delegate to Character Agent for NPC interactions
+        
+        PLAYER AGENCY RULES (SACRED):
+        - Player choices are SACRED - if a player chooses option 3, you MUST follow option 3
+        - Record all important player choices using record_player_choice tool
+        - When players make numbered choices, acknowledge and follow their exact choice
+        
+        You have access to game context, player state, location data, story progression, and turn information
+        through your tools that read from the single source of truth (game_state).
+        Your goal is to create engaging, choice-driven narratives that feel like a real adventure.""",
         tools=[
             GetFullGameStateTool(),
             GetCurrentSceneTool(),
             LogGameEventTool(),
             UpdatePlayerLocationTool(),
-            CreateBasicLocationTool()
+            CreateBasicLocationTool(),
+            RecordPlayerChoiceTool(),
+            CheckLocationExistsTool(),
+            GetWorldLocationsTool()
         ],
         verbose=True,
         allow_delegation=True
@@ -125,7 +194,7 @@ def create_game_coordinator_agent():
     return game_coordinator
 
 def create_coordination_task(user_input: str):
-    """Create a smart coordination task that lets the LLM decide what to do"""
+    """Create a smart coordination task focused on rich storytelling with game_state integration"""
     
     # Get turn information for context
     turn_info = game_state.get_turn_info()
@@ -141,48 +210,80 @@ def create_coordination_task(user_input: str):
         • {"⚠️  FINAL TURN - Must conclude the adventure!" if turn_info['turns_remaining'] <= 1 else ""}
         
         PACING GUIDANCE:
-        - Beginning phase (1-1): World-building, discovery, setup
-        - Middle phase (2-3): Challenges, character development, complications  
-        - Late phase (4): Build toward climax, increase stakes
+        - Beginning phase (1-1): World-building, discovery, setup mysterious hooks
+        - Middle phase (2-3): Challenges, character development, meaningful choices
+        - Late phase (4): Build toward climax, increase stakes, major decisions
         - Climax phase (5): Epic conclusion, resolve all plot threads
         
-        Adjust your response and any delegated tasks to match the current story phase.
+        Adjust your response and delegations to match the current story phase.
+        """
+    
+    # Check if this is a player choice from previous options
+    choice_context = ""
+    if any(word in user_input.lower() for word in ['option', 'choice', 'choose', '1)', '2)', '3)', '4)']):
+        choice_context = """
+        🚨 PLAYER CHOICE DETECTED! 🚨
+        This appears to be a player choosing from previous options.
+        Use record_player_choice tool to record this choice.
+        CRITICAL: You MUST honor their exact choice - do not deviate or substitute.
         """
     
     task = Task(
         description=f"""
-        INTELLIGENT COORDINATION TASK
+        ENHANCED STORYTELLING COORDINATION TASK WITH GAME_STATE INTEGRATION
         User Input: "{user_input}"
         {turn_context}
+        {choice_context}
         
-        Your job is to handle this request efficiently using your understanding of the game context.
-        
-        AVAILABLE TOOLS:
-        • get_full_game_state - See complete game state including player, locations, characters, story
-        • get_current_scene - Get detailed current location and scene information  
-        • log_game_event - Record important events
-        • update_player_location - Move player to new location
-        • create_basic_location - Create simple locations as needed
+        YOUR MISSION: Create engaging, choice-driven interactive fiction that feels alive and immersive,
+        using game_state as the single source of truth for all world information.
         
         DECISION PROCESS:
-        1. Use get_current_scene and/or get_full_game_state to understand the current context
-        2. Consider the turn progression when crafting responses and making decisions
-        3. Decide if you can handle this request directly:
-           - Simple movement (north, south, east, west) → Use your tools to move player and describe
-           - Basic exploration (look around) → Use current scene to provide rich description
-           - Status/help requests → Use game state to provide information
-        4. OR if you need specialist expertise, delegate to:
-           - World Agent: Complex location design, detailed environments
-           - Character Agent: NPC dialogue, character interactions  
-           - Story Agent: Complex narrative events, story choices (include turn context!)
+        1. Use get_current_scene and/or get_full_game_state to understand context from game_state
+        2. Consider turn progression for appropriate story pacing
+        3. If this is a player choice, use record_player_choice tool and HONOR their choice
+        4. For movement commands, use check_location_exists before attempting to move
+        5. For SIMPLE requests, handle directly BUT make them engaging:
+           - Movement commands → Create atmospheric descriptions, story hooks, discoveries
+           - Basic exploration → Rich environmental storytelling with mysteries/intrigue
+           - Status requests → Provide information with narrative flair
+        6. For COMPLEX/RICH content needs, delegate to specialists:
+           - World Agent: Detailed locations, complex environments, atmospheric settings
+           - Character Agent: NPCs, dialogue, character interactions, personalities
+           - Story Agent: Plot development, meaningful choices, story progression, narrative events
         
-        GOAL: Provide an engaging, immersive response that makes the game world feel alive.
-        Use your tools creatively to handle requests directly when possible, or delegate when you need 
-        specialist expertise. Always give rich, descriptive responses that enhance the player experience
-        and match the current story pacing phase.
+        GAME_STATE INTEGRATION RULES:
+        ✅ DO use get_current_scene to understand what's in the current location
+        ✅ DO use check_location_exists before moving players
+        ✅ DO use get_world_locations to see what areas are available
+        ✅ DO delegate to World Agent if new locations need to be created
+        ✅ DO read from game_state as the single source of truth
+        
+        STORYTELLING GUIDELINES:
+        ✅ DO create rich, atmospheric descriptions even for simple movement
+        ✅ DO introduce story elements: mysteries, discoveries, interesting details
+        ✅ DO provide meaningful choices when appropriate (delegate to Story Agent)
+        ✅ DO create narrative tension and intrigue
+        ✅ DO make every response feel like part of an adventure
+        
+        ❌ DON'T give bland, basic descriptions like "A new area of the forest"
+        ❌ DON'T just move the player without adding story elements
+        ❌ DON'T miss opportunities to create engaging content
+        ❌ DON'T ignore player choices or substitute different actions
+        ❌ DON'T assume locations exist - check first using tools
+        
+        DELEGATION TRIGGERS:
+        - "Need rich location details" → World Agent
+        - "Need story progression/choices" → Story Agent  
+        - "Need character interactions" → Character Agent
+        - "Simple movement but want atmospheric description" → Handle directly with rich content
+        
+        GOAL: Every response should feel engaging and story-driven, whether handled directly or delegated.
+        Player choices are SACRED and must be honored exactly as chosen.
+        Always use game_state as the single source of truth for world information.
         """,
         agent=create_game_coordinator_agent(),
-        expected_output="An engaging response that either handles the request directly using available tools or coordinates with specialists as needed, with appropriate pacing for the current turn"
+        expected_output="An engaging, story-driven response that either handles the request with rich content or delegates to specialists for complex narrative development, using game_state as single source of truth"
     )
     
     return task

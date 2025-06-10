@@ -42,20 +42,20 @@ print(f"=== GAME SESSION STARTED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 print(f"📝 All terminal output will be logged to: {log_filename}")
 
 class GameState:
-    """Shared game state that all agents can read and modify"""
+    """Shared game state that all agents can read and modify - SINGLE SOURCE OF TRUTH"""
     
     def __init__(self):
         self.state = {
             "player": {
                 "name": "",
-                "location": "starting_room",
+                "location": None,  # Will be set dynamically when world is created
                 "inventory": [],
                 "health": 100,
                 "experience": 0
             },
             "world": {
-                "locations": {},
-                "current_location": "starting_room"
+                "locations": {},  # This is where World Agent saves all location data
+                "current_location": None  # Will be set dynamically
             },
             "characters": {},
             "story": {
@@ -76,7 +76,7 @@ class GameState:
         logging.info(f"Game configured for {self.state['turn_counter']['max_turns']} turns")
     
     def get_state(self) -> Dict[str, Any]:
-        """Get current game state"""
+        """Get current game state - READ by all agents and main application"""
         return self.state
     
     def update_player(self, updates: Dict[str, Any]):
@@ -87,20 +87,125 @@ class GameState:
         logging.info(f"PLAYER_UPDATE: {updates}")
     
     def add_location(self, location_name: str, location_data: Dict[str, Any]):
-        """Add a new location to the world"""
+        """
+        CRITICAL: Add a new location to the world - called by World Agent tools
+        This is the single source of truth for all world data
+        """
+        # Ensure location_data has all required fields
+        if "name" not in location_data:
+            location_data["name"] = location_name
+        if "description" not in location_data:
+            location_data["description"] = "A mysterious place waiting to be explored."
+        if "exits" not in location_data:
+            location_data["exits"] = []
+        if "items" not in location_data:
+            location_data["items"] = []
+            
+        # Save to the single source of truth
         self.state["world"]["locations"][location_name] = location_data
+        
+        # If this is the first location and player doesn't have a location yet, set it as starting location
+        if self.state["player"]["location"] is None:
+            self.state["player"]["location"] = location_name
+            self.state["world"]["current_location"] = location_name
+            logging.info(f"STARTING_LOCATION_SET: {location_name}")
+        
         log_msg = f"Location added: {location_name}"
         self.log_event(log_msg)
         logging.info(f"LOCATION_CREATED: {location_name} - {location_data.get('description', '')[:100]}...")
+        
+        return location_name
     
     def set_current_location(self, location_name: str):
-        """Change player's current location"""
+        """
+        CRITICAL: Change player's current location - called by World Agent tools
+        Updates the single source of truth
+        """
+        # Verify location exists
+        if location_name not in self.state["world"]["locations"]:
+            raise ValueError(f"Location '{location_name}' does not exist in game world")
+            
         old_location = self.state["player"]["location"]
         self.state["player"]["location"] = location_name
         self.state["world"]["current_location"] = location_name
+        
         log_msg = f"Player moved from {old_location} to {location_name}"
         self.log_event(log_msg)
         logging.info(f"PLAYER_MOVEMENT: {old_location} -> {location_name}")
+    
+    def get_current_location_name(self) -> str:
+        """Get the current location name"""
+        return self.state["player"]["location"]
+    
+    def get_current_location_data(self) -> Dict[str, Any]:
+        """Get complete data for current location from single source of truth"""
+        current_loc = self.state["player"]["location"]
+        if current_loc and current_loc in self.state["world"]["locations"]:
+            return self.state["world"]["locations"][current_loc]
+        return {}
+    
+    def location_exists(self, location_name: str) -> bool:
+        """Check if a location exists in the world"""
+        return location_name in self.state["world"]["locations"]
+    
+    def get_all_locations(self) -> Dict[str, Any]:
+        """Get all locations in the world"""
+        return self.state["world"]["locations"]
+    
+    def add_item_to_location(self, location_name: str, item_name: str, item_description: str = ""):
+        """Add an item to a specific location"""
+        if location_name in self.state["world"]["locations"]:
+            if "items" not in self.state["world"]["locations"][location_name]:
+                self.state["world"]["locations"][location_name]["items"] = []
+            
+            item_data = {
+                "name": item_name,
+                "description": item_description
+            }
+            self.state["world"]["locations"][location_name]["items"].append(item_data)
+            
+            log_msg = f"Added item '{item_name}' to location '{location_name}'"
+            self.log_event(log_msg)
+            logging.info(f"ITEM_ADDED: {item_name} -> {location_name}")
+            return True
+        return False
+    
+    def remove_item_from_location(self, location_name: str, item_name: str):
+        """Remove an item from a location (e.g., when player takes it)"""
+        if location_name in self.state["world"]["locations"]:
+            items = self.state["world"]["locations"][location_name].get("items", [])
+            for i, item in enumerate(items):
+                if isinstance(item, dict) and item.get("name") == item_name:
+                    removed_item = items.pop(i)
+                    log_msg = f"Removed item '{item_name}' from location '{location_name}'"
+                    self.log_event(log_msg)
+                    logging.info(f"ITEM_REMOVED: {item_name} from {location_name}")
+                    return removed_item
+                elif isinstance(item, str) and item == item_name:
+                    removed_item = items.pop(i)
+                    log_msg = f"Removed item '{item_name}' from location '{location_name}'"
+                    self.log_event(log_msg)
+                    logging.info(f"ITEM_REMOVED: {item_name} from {location_name}")
+                    return removed_item
+        return None
+    
+    def add_exit_to_location(self, location_name: str, direction: str):
+        """Add an exit to a location"""
+        if location_name in self.state["world"]["locations"]:
+            if "exits" not in self.state["world"]["locations"][location_name]:
+                self.state["world"]["locations"][location_name]["exits"] = []
+            
+            if direction not in self.state["world"]["locations"][location_name]["exits"]:
+                self.state["world"]["locations"][location_name]["exits"].append(direction)
+                log_msg = f"Added exit '{direction}' to location '{location_name}'"
+                self.log_event(log_msg)
+                logging.info(f"EXIT_ADDED: {direction} -> {location_name}")
+                return True
+        return False
+    
+    def get_starting_location(self) -> str:
+        """Get the current starting location name (dynamically set)"""
+        return self.state["player"]["location"] or "unknown_location"
     
     def add_character(self, character_name: str, character_data: Dict[str, Any]):
         """Add a character to the game"""
@@ -124,7 +229,7 @@ class GameState:
         logging.info(f"PLAYER_CHOICE: {choice}")
     
     def log_event(self, event: str):
-        """Log any game event"""
+        """Log any game event with timestamp"""
         timestamped_event = f"[{datetime.now().strftime('%H:%M:%S')}] {event}"
         self.state["game_log"].append(timestamped_event)
     
@@ -171,9 +276,8 @@ class GameState:
         return self.state["turn_counter"]["game_ended"]
     
     def get_current_location_info(self) -> Dict[str, Any]:
-        """Get information about current location"""
-        current_loc = self.state["player"]["location"]
-        return self.state["world"]["locations"].get(current_loc, {})
+        """Get information about current location from single source of truth"""
+        return self.get_current_location_data()
     
     def get_story_summary_data(self) -> Dict[str, Any]:
         """Get comprehensive data for story summarization"""
@@ -210,6 +314,18 @@ class GameState:
     def to_json(self) -> str:
         """Convert state to JSON for agent communication"""
         return json.dumps(self.state, indent=2)
+    
+    def debug_world_state(self):
+        """Debug function to print current world state"""
+        print("\n=== DEBUG: CURRENT WORLD STATE ===")
+        print(f"Player location: {self.state['player']['location']}")
+        print(f"Total locations: {len(self.state['world']['locations'])}")
+        for loc_name, loc_data in self.state['world']['locations'].items():
+            print(f"  {loc_name}:")
+            print(f"    Description: {loc_data.get('description', 'No description')[:100]}...")
+            print(f"    Items: {len(loc_data.get('items', []))}")
+            print(f"    Exits: {loc_data.get('exits', [])}")
+        print("=== END DEBUG ===\n")
 
-# Global game state instance
+# Global game state instance - THE SINGLE SOURCE OF TRUTH
 game_state = GameState()

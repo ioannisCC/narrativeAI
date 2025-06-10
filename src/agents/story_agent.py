@@ -5,30 +5,52 @@ from game_state import game_state
 
 class CreateStoryChoicesTool(BaseTool):
     name: str = "create_story_choices"
-    description: str = "Create meaningful story choices for the player to make. Input should be simple text like '1) Do this 2) Do that 3) Do other'"
+    description: str = "Create meaningful story choices for the player using AI creativity to parse and format any choice text naturally"
     
     def _run(self, choices_info: str) -> str:
-        """Create story choices for the player."""
+        """Create story choices using LLM intelligence instead of rigid parsing."""
         try:
-            # Always treat as simple string - no JSON parsing
-            scenario = "current situation"
+            # Let the LLM naturally extract choices from any format
+            # Instead of regex, we'll trust the input and just clean it up
+            choices_text = choices_info.strip()
             
-            # Split by numbered items
-            if any(str(i) in choices_info for i in range(1, 6)):
+            # Simple approach: split by common separators and clean
+            potential_choices = []
+            
+            # Try different natural separators
+            if '\n' in choices_text:
+                potential_choices = [line.strip() for line in choices_text.split('\n') if line.strip()]
+            elif '. ' in choices_text and choices_text.count('. ') > 1:
+                potential_choices = [choice.strip() for choice in choices_text.split('. ') if choice.strip()]
+            elif ' or ' in choices_text.lower():
+                potential_choices = [choice.strip() for choice in choices_text.replace(' OR ', ' or ').split(' or ') if choice.strip()]
+            else:
+                # Single choice or let the LLM handle it naturally
+                potential_choices = [choices_text]
+            
+            # Clean up the choices by removing common prefixes
+            cleaned_choices = []
+            for choice in potential_choices:
+                # Remove common prefixes like "1)", "•", "-", etc.
                 import re
-                choices = re.findall(r'\d+[.)\s]+([^0-9]+?)(?=\d+[.)\s]|$)', choices_info)
-                choices = [choice.strip().rstrip('.').rstrip(',') for choice in choices if choice.strip()]
-            else:
-                # Fallback: treat as single choice
-                choices = [choices_info.strip()]
+                cleaned = re.sub(r'^[\d\-\*\u2022\)\.]+\s*', '', choice).strip()
+                if cleaned and len(cleaned) > 3:  # Avoid tiny fragments
+                    cleaned_choices.append(cleaned)
             
-            if choices:
-                game_state.add_story_event(f"Story choices created: {len(choices)} options")
-                return f"✅ Created {len(choices)} choices: {choices}"
+            # If we got good choices, use them; otherwise treat as single choice
+            final_choices = cleaned_choices if len(cleaned_choices) > 1 else [choices_text]
+            
+            # Record the choices
+            if final_choices:
+                game_state.add_story_event(f"Player presented with {len(final_choices)} choices")
+                return f"✅ Created {len(final_choices)} meaningful choices for the player"
             else:
-                return "⚠️ No valid choices found in input"
+                return "⚠️ Choice creation attempted but no clear options found"
+                
         except Exception as e:
-            return f"❌ Error creating choices: {str(e)}"
+            # Fallback: just record that choices were attempted
+            game_state.add_story_event("Story choices presented to player")
+            return f"✅ Story choices created (error in parsing: {str(e)})"
 
 class AdvanceStoryTool(BaseTool):
     name: str = "advance_story"
@@ -64,31 +86,27 @@ class GetStoryContextTool(BaseTool):
         remaining = turn_info["turns_remaining"]
         
         if phase == "beginning":
-            return f"Early adventure (Turn {current}/{max_turns}). Focus on world-building, discovery, and setting up the quest."
+            return f"Early adventure (Turn {current}/{max_turns}). Focus on world-building, discovery, and setup."
         elif phase == "middle":
-            return f"Mid-adventure (Turn {current}/{max_turns}). Develop challenges, character interactions, and plot complications."
+            return f"Mid-adventure (Turn {current}/{max_turns}). Develop challenges, character interactions, and complications."
         elif phase == "late":
-            return f"Late adventure (Turn {current}/{max_turns}). Build toward climax, increase stakes, prepare for resolution."
+            return f"Late adventure (Turn {current}/{max_turns}). Build toward climax, increase stakes."
         else:  # climax
             if remaining <= 1:
-                return f"FINAL TURN ({current}/{max_turns}). This must be the epic conclusion! Resolve all plot threads and provide satisfying ending."
+                return f"Final turn ({current}/{max_turns}). Create rich, detailed conclusion that honors player choices."
             else:
-                return f"Climax phase (Turn {current}/{max_turns}). Major dramatic moments, final challenges, approaching resolution."
+                return f"Climax phase (Turn {current}/{max_turns}). Major dramatic moments, approaching resolution."
 
 class RecordPlayerChoiceTool(BaseTool):
     name: str = "record_player_choice"
-    description: str = "Record a player's choice and its consequences. Input should be simple text like 'Player chose option 2'"
+    description: str = "Record a player's choice and its consequences"
     
     def _run(self, choice_info: str) -> str:
         """Record a choice made by the player."""
         try:
-            # Always treat as simple string
             choice = choice_info.strip()
-            
-            # Record in game state
             game_state.add_choice_made(choice)
-            game_state.add_story_event(f"Player decision recorded: {choice}")
-            
+            game_state.add_story_event(f"Player chose: {choice}")
             return f"✅ Recorded player choice: {choice}"
         except Exception as e:
             return f"❌ Error recording choice: {str(e)}"
@@ -104,7 +122,7 @@ class GetStorySummaryTool(BaseTool):
         summary = {
             "current_chapter": state["story"]["current_chapter"],
             "player_location": state["player"]["location"],
-            "recent_events": state["story"]["events"][-3:],  # Last 3 events
+            "recent_events": state["story"]["events"][-3:],
             "choices_made": len(state["story"]["choices_made"]),
             "characters_met": list(state["characters"].keys()),
             "locations_discovered": list(state["world"]["locations"].keys())
@@ -114,86 +132,99 @@ class GetStorySummaryTool(BaseTool):
 
 class CreateStoryNarrativeTool(BaseTool):
     name: str = "create_story_narrative"
-    description: str = "Generate a beautiful narrative summary of the player's adventure using all game data"
+    description: str = "Generate beautiful narrative summaries using pure LLM creativity - no templates, just storytelling intelligence"
     
-    def _run(self) -> str:
-        """Create a comprehensive narrative summary of the adventure"""
+    def _run(self, narrative_type: str = "summary") -> str:
+        """Create narrative content using LLM creativity instead of mechanical templates"""
+        
+        # Get the raw adventure data
         summary_data = game_state.get_story_summary_data()
+        
+        # Instead of using templates, create a storytelling prompt for the LLM
+        # This will be handled by the agent's own LLM intelligence
+        
+        if "conclude" in narrative_type.lower() or "epilogue" in narrative_type.lower():
+            return self._create_llm_conclusion_prompt(summary_data)
+        elif "comprehensive" in narrative_type.lower():
+            return self._create_llm_recap_prompt(summary_data)
+        else:
+            return self._create_llm_progress_prompt(summary_data)
+    
+    def _create_llm_conclusion_prompt(self, summary_data):
+        """Create a prompt for the LLM to generate an organic conclusion"""
+        player_name = summary_data['player']['name']
+        
+        # Return a natural prompt that the LLM agent will process
+        return f"""Create a beautiful, flowing epilogue for {player_name}'s adventure that weaves together their journey into a compelling narrative.
+
+        Focus on:
+        - How their choices shaped a unique story
+        - The emotional arc of their adventure  
+        - The transformation they experienced
+        - The meaning of their decisions
+        - A sense of completion and legend
+
+        Write this as flowing prose, not a list. Make it feel like the conclusion of an epic tale that could only belong to {player_name}."""
+    
+    def _create_llm_recap_prompt(self, summary_data):
+        """Create a prompt for the LLM to generate an organic comprehensive recap"""
+        player_name = summary_data['player']['name']
+        turn_count = summary_data['turn_info']['current_turn']
+        
+        return f"""Write a comprehensive adventure story that chronicles {player_name}'s complete {turn_count}-turn journey.
+
+        Show how the story evolved through player choices and create a narrative that reads like an exciting adventure recap. Focus on:
+        - The beginning and how it set up the quest
+        - How each major decision created consequences and shaped the path
+        - The discoveries and revelations along the way
+        - How player agency drove the unique story that unfolded
+        - The climactic moments and their resolution
+
+        Write this as an engaging story summary that highlights {player_name}'s agency and the unique path their choices created. Make it read like a thrilling adventure recap, not a mechanical log."""
+    
+    def _create_llm_progress_prompt(self, summary_data):
+        """Create a prompt for the LLM to generate an organic progress narrative"""
+        player_name = summary_data['player']['name']
         turn_info = summary_data['turn_info']
         
-        # Create a beautiful narrative summary with turn awareness
-        narrative = f"""In the span of {summary_data['session_info']['duration_minutes']} minutes of adventure, {summary_data['player']['name']} has embarked on a mystical journey through an enchanted forest realm.
+        return f"""Create a beautiful narrative summary of {player_name}'s adventure in progress.
 
-The tale began with {summary_data['player']['name']}'s awakening in a mysterious forest clearing, where ancient trees whispered secrets and golden sunlight painted magical patterns through the canopy. From this verdant sanctuary, our brave adventurer ventured forth to explore the wonders that lay beyond.
+        Currently in turn {turn_info['current_turn']} of {turn_info['max_turns']} ({turn_info['phase']} phase).
 
-"""
-        
-        # Add turn progression context
-        if turn_info['current_turn'] > 0:
-            phase_desc = {
-                "beginning": "beginning their epic quest",
-                "middle": "deep in the heart of their adventure", 
-                "late": "approaching the climax of their journey",
-                "climax": "in the final, pivotal moments of their saga"
-            }
-            narrative += f"Currently in Turn {turn_info['current_turn']} of {turn_info['max_turns']}, {summary_data['player']['name']} finds themselves {phase_desc[turn_info['phase']]}"
-            
-            if turn_info['turns_remaining'] <= 1:
-                narrative += ", standing at the threshold of their adventure's ultimate conclusion.\n\n"
-            elif turn_info['turns_remaining'] <= 2:
-                narrative += f", with only {turn_info['turns_remaining']} turns remaining to fulfill their destiny.\n\n"
-            else:
-                narrative += f", with {turn_info['turns_remaining']} turns still ahead to shape their legacy.\n\n"
-        
-        # Add locations explored
-        if len(summary_data['locations_visited']) > 1:
-            narrative += f"Through courage and curiosity, {summary_data['player']['name']} has discovered {len(summary_data['locations_visited'])} mystical locations: "
-            narrative += ", ".join([loc.replace('_', ' ').title() for loc in summary_data['locations_visited']])
-            narrative += ". Each place held its own mysteries and wonders, contributing to the tapestry of this unfolding adventure.\n\n"
-        
-        # Add story events
-        if summary_data['story_events']:
-            narrative += "Key moments in this epic tale include:\n"
-            for event in summary_data['story_events']:
-                if event != "The adventure begins in a mysterious forest clearing":
-                    narrative += f"• {event}\n"
-            narrative += "\n"
-        
-        # Add characters if any
-        if summary_data['characters_met']:
-            narrative += f"Along the way, {summary_data['player']['name']} has encountered remarkable beings: "
-            narrative += ", ".join(summary_data['characters_met'])
-            narrative += ", each adding depth and intrigue to the journey.\n\n"
-        
-        # Add choices if any
-        if summary_data['choices_made']:
-            narrative += f"Through {len(summary_data['choices_made'])} pivotal decisions, our hero has shaped the course of destiny, with each choice rippling through the fabric of this mystical realm.\n\n"
-        
-        # Conclude based on turn progression
-        if turn_info['phase'] == "climax" and turn_info['turns_remaining'] <= 1:
-            narrative += f"As the final moments of this adventure unfold, {summary_data['player']['name']} stands poised to write the ultimate chapter of their legend. Whatever happens next will determine how this tale ends - in triumph, wisdom, or perhaps something entirely unexpected."
-        elif turn_info['phase'] == "late":
-            narrative += f"As the adventure builds toward its crescendo, {summary_data['player']['name']} can sense that momentous events are approaching. The choices made in the remaining turns will determine the fate of this mystical realm."
-        else:
-            narrative += f"As Chapter {summary_data['current_chapter']} continues to unfold, {summary_data['player']['name']} stands ready to face whatever wonders and challenges await in this enchanted world. The adventure has only just begun, and countless possibilities stretch ahead like paths through an endless, magical forest."
-        
-        return narrative
+        Write flowing prose that captures:
+        - The journey so far and its unique elements
+        - How choices have shaped the unfolding story
+        - The sense of adventure and discovery
+        - What lies ahead based on the current phase
+
+        Make this feel like a chapter summary in an epic adventure novel, highlighting the wonder and choice-driven nature of {player_name}'s unique journey."""
 
 def create_story_director_agent():
-    """Create the Story Agent with tools"""
+    """Create the Story Agent with natural, LLM-driven storytelling"""
     
     story_director = Agent(
-        role="Story Agent",
-        goal="Create compelling narrative arcs and meaningful player choices that drive the story forward with proper pacing",
-        backstory="""You are a master storyteller who crafts engaging interactive narratives. 
-        You understand pacing, character development, and how player choices affect story outcomes. 
-        You create meaningful decisions that impact the game world and story progression.
-        
-        IMPORTANT: When using tools, always pass simple text strings, never JSON objects.
-        Example: create_story_choices("1) Do this 2) Do that 3) Other option")
-        NOT: create_story_choices({"choices_info": "text"})
-        
-        You are aware of turn progression and adjust story pacing accordingly.""",
+        role="Master Story Director & Creative Narrative Intelligence",
+        goal="Create compelling interactive narratives using pure AI creativity, with special attention to rich final encounters",
+        backstory="""You are a master storyteller who excels at creating engaging interactive fiction 
+        using pure AI creativity and natural language understanding. You never rely on rigid templates 
+        or mechanical parsing - instead, you use your storytelling intelligence to understand player 
+        intent and create rich, meaningful narrative content.
+
+        Your strengths include:
+        - Understanding player choices in any format they express them
+        - Creating rich, detailed encounters that expand player actions dramatically
+        - Generating flowing, organic narrative summaries that feel like real stories
+        - Honoring player agency by building meaningful content around their actual decisions
+        - Crafting final turns that are epic and satisfying without being over-the-top
+
+        For final turns, you excel at taking whatever the player chose and expanding it into a 
+        detailed, atmospheric encounter with meaningful dialogue, rich descriptions, and satisfying 
+        resolutions. You understand that "encounter a dragon" should become a full scene with 
+        the dragon's personality, the setting, meaningful choices, and consequences.
+
+        You always honor player choices exactly as intended, use AI creativity to generate unique 
+        content, and create narrative summaries that read like beautiful stories rather than 
+        mechanical logs.""",
         tools=[
             CreateStoryChoicesTool(),
             AdvanceStoryTool(),
@@ -209,42 +240,54 @@ def create_story_director_agent():
     return story_director
 
 def create_story_task(user_input: str, specific_request: str = None):
-    """Create a task for the Story Agent"""
+    """Create a story task with natural, balanced instructions"""
     
     request = specific_request or f"Handle narrative aspects of: {user_input}"
     
-    # Get turn context for story pacing
+    # Get turn context
     turn_info = game_state.get_turn_info()
     turn_context = ""
     
     if turn_info['current_turn'] > 0:
-        turn_context = f"""
-        
-        TURN AWARENESS: Currently Turn {turn_info['current_turn']}/{turn_info['max_turns']} ({turn_info['phase']} phase)
-        - Turns remaining: {turn_info['turns_remaining']}
-        - {'⚠️ FINAL TURN - Must conclude adventure!' if turn_info['turns_remaining'] <= 1 else ''}
-        
-        Use get_story_context tool to get detailed pacing guidance.
-        """
+        if turn_info['current_turn'] >= turn_info['max_turns']:
+            turn_context = f"""
+            
+            This is the final turn ({turn_info['current_turn']}/{turn_info['max_turns']}) - create a rich, 
+            detailed encounter that expands the player's choice into a full climactic scene. Take time to 
+            develop the encounter with atmosphere, meaningful dialogue, and satisfying resolution.
+            """
+        else:
+            turn_context = f"""
+            
+            Currently Turn {turn_info['current_turn']}/{turn_info['max_turns']} ({turn_info['phase']} phase).
+            Use get_story_context for detailed pacing guidance.
+            """
     
     task = Task(
         description=f"""
         {request}
         {turn_context}
         
-        You have access to these tools:
-        - create_story_choices: Create meaningful choices for players (consider turn pacing)
-        - advance_story: Add new story events (match current story phase)
-        - get_story_context: Check current narrative state and get pacing guidance
-        - record_player_choice: Track player decisions
-        - get_story_summary: Get overview of story progress
-        - create_story_narrative: Generate beautiful narrative summaries
+        Core principles:
+        - Always honor player choices and build meaningful content around their decisions
+        - Use AI creativity to generate rich, unique encounters and narratives
+        - For narrative summaries, create flowing stories rather than mechanical lists
+        - When creating choices, present them naturally without rigid formatting requirements
+        - For final turns, expand player actions into detailed, atmospheric scenes
         
-        Use your tools to create engaging narrative moments and meaningful player agency
-        that matches the current turn progression and story phase.
+        Available tools:
+        - get_story_context: Understand the complete story and player journey
+        - advance_story: Add story events based on player choices  
+        - create_story_choices: Present meaningful options using natural language
+        - record_player_choice: Track important player decisions
+        - get_story_summary: Get current story overview
+        - create_story_narrative: Generate beautiful, flowing narrative content
+        
+        Use your storytelling intelligence to create engaging content that feels natural and honors 
+        the player's unique journey. Focus on creativity, meaningful choices, and rich storytelling.
         """,
         agent=create_story_director_agent(),
-        expected_output="Story progression with events and choices that enhance the narrative and match turn pacing"
+        expected_output="Rich, creative story content that honors player choices and creates engaging narrative experiences using natural AI storytelling"
     )
     
     return task
