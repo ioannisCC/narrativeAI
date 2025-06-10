@@ -1,151 +1,178 @@
 #!/usr/bin/env python3
+"""
+Interactive Fiction Engine - Main Game Loop
+A multi-agent system for creating interactive fiction experiences
+"""
+
 import os
 import sys
-from colorama import init, Fore, Style
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
+from dotenv import load_dotenv
+from crew import fiction_crew
+from game_state import game_state
 
-# initialize colorama for cross-platform color support
-init()
+def display_welcome():
+    """Display welcome message and game instructions"""
+    print("\n" + "="*60)
+    print("🎮 INTERACTIVE FICTION ENGINE 🎮")
+    print("A Multi-Agent Storytelling Experience")
+    print("="*60)
+    print("\nWelcome to an interactive fiction adventure powered by AI agents!")
+    print("\nOur crew of specialized agents will create your story:")
+    print("🏗️  World Builder - Creates locations and environments")
+    print("👥 Character Manager - Manages NPCs and dialogue")
+    print("📖 Story Director - Handles plot and choices")
+    print("🎯 Game Coordinator - Orchestrates everything")
+    print("\n" + "-"*60)
+    print("\nCommands you can try:")
+    print("• 'look around' - examine your surroundings")
+    print("• 'go [direction]' - move to another location")
+    print("• 'talk to [character]' - interact with NPCs")
+    print("• 'take [item]' - pick up items")
+    print("• 'summarize' - get AI story summary")
+    print("• 'status' - check your current status")
+    print("• 'help' - get assistance")
+    print("• 'quit' - exit the game")
+    print("-"*60)
 
-# initialize rich console
-console = Console()
-
-# add project directory to python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-try:
-    from crew import InteractiveFictionCrew, display_scene, get_player_input, display_help
-except ImportError as e:
-    print(f"Import Error: {e}")
-    print("Make sure all dependencies are installed: pip install -r requirements.txt")
-    sys.exit(1)
-
-
-def show_welcome_banner():
-    """Display welcome banner"""
-    banner = Text()
-    banner.append("Interactive Fiction Engine\n", style="bold blue")
-    banner.append("Powered by CrewAI Multi-Agent System\n\n", style="blue")
-    banner.append("Four AI agents working together to create your story:\n", style="green")
-    banner.append("World Agent - Creates immersive environments\n", style="cyan")
-    banner.append("Character Agent - Brings NPCs to life\n", style="yellow") 
-    banner.append("Story Agent - Weaves compelling narratives\n", style="magenta")
-    banner.append("Coordinator Agent - Orchestrates the experience\n", style="red")
+def display_game_state():
+    """Display current game state in a user-friendly format"""
+    state = game_state.get_state()
+    player = state["player"]
     
-    console.print(Panel(banner, title="Welcome", border_style="bright_green"))
+    print(f"\n📊 Player Status:")
+    print(f"   Name: {player['name']}")
+    print(f"   Location: {player['location'].replace('_', ' ').title()}")
+    print(f"   Health: {player['health']}")
+    print(f"   Items: {', '.join(player['inventory']) if player['inventory'] else 'None'}")
 
-
-def check_api_key():
-    """Check if OpenAI API key is configured"""
-    if not os.getenv("OPENAI_API_KEY"):
-        console.print(Panel(
-            "OpenAI API Key not found!\n\n"
-            "Please set your API key in the .env file:\n"
-            "OPENAI_API_KEY=your_key_here\n\n"
-            "You can get an API key from: https://platform.openai.com/api-keys",
-            title="Configuration Error",
-            border_style="red"
-        ))
-        return False
-    return True
-
+def initialize_player():
+    """Initialize player information"""
+    print("\n🌟 Let's begin your adventure!")
+    player_name = input("What is your name, adventurer? ").strip()
+    
+    if not player_name:
+        player_name = "Mysterious Traveler"
+    
+    # Update game state with player name
+    game_state.update_player({"name": player_name})
+    
+    print(f"\nWelcome, {player_name}! Your adventure begins now...")
+    return player_name
 
 def main():
     """Main game loop"""
-    show_welcome_banner()
     
-    if not check_api_key():
+    # Load environment variables
+    load_dotenv()
+    
+    # Check for OpenAI API key
+    if not os.getenv("OPENAI_API_KEY"):
+        print("❌ Error: OPENAI_API_KEY not found in environment variables.")
+        print("Please create a .env file with your OpenAI API key.")
+        print("Example: OPENAI_API_KEY=your_api_key_here")
         return
     
-    try:
-        console.print("🚀 Initializing AI agents...", style="yellow")
-        
-        # initialize the crew with error handling
-        crew = InteractiveFictionCrew(
-            model_name="gpt-3.5-turbo",
-            temperature=0.8
-        )
-        
-        console.print("All agents ready!", style="green")
-        console.print("\n💡 Type 'help' at any time for commands\n", style="blue")
-        
-        # start new story
-        console.print("🎬 Starting your adventure...", style="yellow")
-        opening_scene = crew.start_new_story()
-        
-        # display opening scene
-        console.print(Panel(opening_scene, title="Your Story Begins", border_style="blue"))
-        
-        # loop
-        turn_count = 0
-        while True:
-            turn_count += 1
+    # Display welcome message
+    display_welcome()
+    
+    # Initialize player
+    player_name = initialize_player()
+    
+    # Show initial scene
+    print(fiction_crew.get_current_scene_description())
+    
+    # Main game loop
+    while True:
+        try:
+            # Get user input
+            print("\n" + ">"*40)
+            user_input = input("What would you like to do? ").strip()
             
-            # get player input
-            user_input = get_player_input(f"\n🎮 Turn {turn_count} - What do you choose? ")
-            
-            # handle special commands
-            if user_input.lower() in ["quit", "exit", "q"]:
-                console.print("👋 Thanks for playing! Your story will be remembered...", style="green")
+            # Handle special commands
+            if user_input.lower() in ['quit', 'exit', 'bye']:
+                print(f"\n👋 Thanks for playing, {player_name}! Your adventure will be remembered.")
+                game_state.close_logging()
                 break
                 
-            elif user_input.lower() in ["help", "h"]:
-                display_help()
-                turn_count -= 1  # on't count help as a turn
+            elif user_input.lower() in ['status', 'stats']:
+                display_game_state()
                 continue
                 
-            elif user_input.lower() in ["status", "stats"]:
-                status = crew.get_story_status()
-                status_text = (f"Game Status:\n"
-                             f"Turn: {status['turn']}\n"
-                             f"Choices Made: {status['choices_made']}\n"
-                             f"Story Length: {status['story_length']} events")
-                console.print(Panel(status_text, title="Status", border_style="cyan"))
-                turn_count -= 1
+            elif user_input.lower() in ['summarize', 'summary', 'story']:
+                print("\n📚 Generating story summary with AI...")
+                print("-" * 50)
+                
+                # Create a specific task for story summarization
+                from agents.story_agent import create_story_director_agent, create_story_task
+                summary_agent = create_story_director_agent()
+                summary_task = create_story_task(
+                    "summarize story", 
+                    "Use create_story_narrative tool to generate a compelling narrative summary of the adventure so far"
+                )
+                
+                from crewai import Crew, Process
+                summary_crew = Crew(
+                    agents=[summary_agent],
+                    tasks=[summary_task],
+                    process=Process.sequential,
+                    verbose=False
+                )
+                
+                try:
+                    summary_result = summary_crew.kickoff()
+                    print("\n📖 YOUR ADVENTURE SO FAR:")
+                    print("=" * 60)
+                    print(summary_result)
+                    print("=" * 60)
+                except Exception as e:
+                    print(f"❌ Error generating summary: {e}")
+                    
                 continue
                 
-            elif user_input.lower() in ["summary", "recap"]:
-                console.print("Generating story summary...", style="yellow")
-                summary = crew.get_story_summary()
-                console.print(Panel(summary, title="Story So Far", border_style="magenta"))
-                turn_count -= 1
+            elif user_input.lower() in ['scene', 'look', 'look around']:
+                print(fiction_crew.get_current_scene_description())
                 continue
                 
-            elif user_input.lower() in ["save"]:
-                filename = f"story_save_turn_{turn_count}.json"
-                if crew.save_story(filename):
-                    console.print(f"Game saved as {filename}", style="green")
-                else:
-                    console.print("Failed to save game", style="red")
-                turn_count -= 1
+            elif user_input.lower() in ['help', '?']:
+                print("\n🤔 Need help? Try commands like:")
+                print("  • 'go north' - move to another area")
+                print("  • 'examine room' - look around carefully")
+                print("  • 'talk to wizard' - speak with characters")
+                print("  • 'take sword' - pick up items")
+                print("  • 'summarize' - get AI story summary")
+                print("  • 'status' - check your current state")
                 continue
             
-            # process player's choice
-            try:
-                console.print("AI agents are crafting your next scene...", style="yellow")
-                next_scene = crew.process_choice(user_input)
-                
-                # display next scene
-                console.print(Panel(
-                    next_scene, 
-                    title=f"Turn {turn_count} Result", 
-                    border_style="blue"
-                ))
-                
-            except Exception as e:
-                console.print(f"Error processing choice: {e}", style="red")
-                console.print("Try rephrasing your choice or type 'help' for guidance", style="yellow")
-                turn_count -= 1  # don't count errors as turns
-                
-    except KeyboardInterrupt:
-        console.print("\nGame interrupted. Thanks for playing!", style="yellow")
-        
-    except Exception as e:
-        console.print(f"Unexpected error: {e}", style="red")
-        console.print("Please check your internet connection and API key.", style="yellow")
-
+            elif not user_input:
+                print("Please enter a command. Type 'help' for assistance.")
+                continue
+            
+            # Process input through the intelligent agent system
+            print("\n🤖 Analyzing your request...")
+            print("-" * 50)
+            
+            response = fiction_crew.process_user_input(user_input)
+            
+            print("\n📜 Game Response:")
+            print("=" * 50)
+            print(response)
+            print("=" * 50)
+            
+            # Show updated scene if location might have changed
+            if any(word in user_input.lower() for word in ['go', 'move', 'travel', 'enter']):
+                print("\n" + fiction_crew.get_current_scene_description())
+            
+        except KeyboardInterrupt:
+            print(f"\n\n👋 Game interrupted. Thanks for playing, {player_name}!")
+            game_state.close_logging()
+            break
+            
+        except Exception as e:
+            print(f"\n❌ An error occurred: {str(e)}")
+            print("Please try a different command or type 'help' for assistance.")
+    
+    # Close logging when game ends
+    game_state.close_logging()
 
 if __name__ == "__main__":
     main()

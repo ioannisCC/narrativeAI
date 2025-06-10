@@ -1,3 +1,6 @@
 __pycache__/
 .env
 structure
+story_images/
+*.log
+venv/

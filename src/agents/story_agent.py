@@ -1,167 +1,192 @@
-from crewai import Agent
-from typing import List, Dict, Any
+from crewai import Agent, Task
+from crewai.tools import BaseTool
+import json
+from game_state import game_state
 
+class CreateStoryChoicesTool(BaseTool):
+    name: str = "create_story_choices"
+    description: str = "Create meaningful story choices for the player to make"
+    
+    def _run(self, choices_info: str) -> str:
+        """Create story choices for the player."""
+        try:
+            # Handle both JSON and simple string input
+            if isinstance(choices_info, str):
+                try:
+                    # Try to parse as JSON first
+                    data = json.loads(choices_info)
+                    scenario = data.get("scenario", "current situation")
+                    choices = data.get("choices", [])
+                except json.JSONDecodeError:
+                    # If not JSON, treat as simple string with choices
+                    scenario = "current situation"
+                    # Split by semicolons or numbered items
+                    if ";" in choices_info:
+                        choices = [choice.strip() for choice in choices_info.split(";")]
+                    elif any(str(i) in choices_info for i in range(1, 6)):
+                        # Handle numbered choices like "1. choice1 2. choice2"
+                        import re
+                        choices = re.findall(r'\d+\.\s*([^0-9]+?)(?=\d+\.|$)', choices_info)
+                        choices = [choice.strip() for choice in choices]
+                    else:
+                        choices = [choices_info]
+            else:
+                scenario = "current situation"
+                choices = [str(choices_info)]
+            
+            game_state.add_story_event(f"Choices created for: {scenario}")
+            return f"Created {len(choices)} choices for scenario: {scenario}. Choices: {choices}"
+        except Exception as e:
+            return f"Error creating choices: {str(e)}"
 
-class StoryAgent:
-    """
-    The Story Agent manages the main narrative, creates meaningful choices,
-    and ensures story progression. This agent focuses on plot development,
-    dramatic tension, and consequence management.
-    """
+class AdvanceStoryTool(BaseTool):
+    name: str = "advance_story"
+    description: str = "Advance the main storyline with new events"
     
-    def __init__(self, llm=None):
-        self.agent = Agent(
-            role='Narrative Director & Plot Weaver',
-            goal='''Create compelling storylines with meaningful choices, manage plot 
-                    progression, and ensure that player decisions have interesting 
-                    consequences. Build dramatic tension and narrative satisfaction.''',
-            backstory='''You are a master storyteller who understands narrative 
-                        structure, pacing, and the art of meaningful choice. You've 
-                        studied classic literature, modern interactive fiction, and 
-                        game narrative design. You know how to create stories where 
-                        every choice matters and leads to interesting consequences. 
-                        You excel at building tension, creating satisfying plot twists, 
-                        and ensuring that stories feel both surprising and inevitable.''',
-            verbose=True,
-            allow_delegation=False,
-            llm=llm
-        )
+    def _run(self, story_event: str) -> str:
+        """Advance the main story with a new event."""
+        game_state.add_story_event(story_event)
+        return f"Story advanced: {story_event}"
+
+class GetStoryContextTool(BaseTool):
+    name: str = "get_story_context"
+    description: str = "Get current story context including events and player choices"
     
-    def develop_plot_progression(self, current_situation: str, 
-                               player_choice: str,
-                               story_history: List[str]) -> str:
-        """
-        Advance the main plot based on player choice and story history
-        
-        Args:
-            current_situation: The current story state
-            player_choice: What the player just chose to do
-            story_history: List of previous story beats
+    def _run(self) -> str:
+        """Get current story context and player choices"""
+        story_data = game_state.get_state()["story"]
+        return json.dumps(story_data, indent=2)
+
+class RecordPlayerChoiceTool(BaseTool):
+    name: str = "record_player_choice"
+    description: str = "Record a player's choice and its consequences"
+    
+    def _run(self, choice_info: str) -> str:
+        """Record a choice made by the player."""
+        try:
+            # Handle both JSON and simple string input
+            if isinstance(choice_info, str):
+                try:
+                    data = json.loads(choice_info)
+                    choice = data.get("choice")
+                    consequence = data.get("consequence", "")
+                except json.JSONDecodeError:
+                    # If not JSON, treat as simple choice string
+                    choice = choice_info
+                    consequence = ""
+            else:
+                choice = str(choice_info)
+                consequence = ""
             
-        Returns:
-            Next plot development and story progression
-        """
-        history_context = "; ".join(story_history[-3:])
-        
-        task_description = f"""
-        Develop the next plot progression based on the player's choice.
-        
-        Current Situation: {current_situation}
-        Player Choice: {player_choice}
-        Recent Story History: {history_context}
-        
-        Create:
-        - Immediate consequence of the player's choice
-        - How this advances or changes the main plot
-        - New story elements or complications introduced
-        - Building tension or resolution
-        - Setup for the next meaningful choice
-        
-        Ensure the progression feels natural and that choices have weight.
-        Keep it engaging and build toward dramatic moments.
-        """
-        
-        return task_description
-    
-    def generate_meaningful_choices(self, current_situation: str, 
-                                  character_context: str,
-                                  world_context: str) -> str:
-        """
-        Create 2-4 meaningful choices for the player
-        
-        Args:
-            current_situation: Current story state
-            character_context: Available characters and relationships
-            world_context: Environmental factors and possibilities
+            game_state.add_choice_made(choice)
+            if consequence:
+                game_state.add_story_event(f"Choice consequence: {consequence}")
             
-        Returns:
-            List of meaningful choice options with consequences
-        """
-        task_description = f"""
-        Generate 3-4 meaningful choices for the player in the current situation.
-        
-        Current Situation: {current_situation}
-        Available Characters: {character_context}
-        Environmental Factors: {world_context}
-        
-        For each choice, provide:
-        - Clear action description (1 sentence)
-        - What type of consequence this might lead to
-        - How it might affect relationships or plot
-        
-        Requirements:
-        - Each choice should lead to different outcomes
-        - Include variety: action, diplomacy, exploration, creative solutions
-        - Make choices feel meaningful, not arbitrary
-        - Avoid "obvious correct answer" scenarios
-        
-        Format as numbered list with brief consequence hints.
-        """
-        
-        return task_description
+            return f"Recorded choice: {choice}"
+        except Exception as e:
+            return f"Error recording choice: {str(e)}"
+
+class GetStorySummaryTool(BaseTool):
+    name: str = "get_story_summary"
+    description: str = "Get a summary of the current story state"
     
-    def manage_story_consequences(self, choice_made: str, 
-                                immediate_outcome: str,
-                                story_state: Dict[str, Any]) -> str:
-        """
-        Determine longer-term consequences of player choices
+    def _run(self) -> str:
+        """Generate a summary of the current story state"""
+        state = game_state.get_state()
         
-        Args:
-            choice_made: The choice the player made
-            immediate_outcome: What happened immediately
-            story_state: Current story state and variables
-            
-        Returns:
-            Longer-term consequences and story impacts
-        """
-        task_description = f"""
-        Determine the broader consequences of the player's choice.
+        summary = {
+            "current_chapter": state["story"]["current_chapter"],
+            "player_location": state["player"]["location"],
+            "recent_events": state["story"]["events"][-3:],  # Last 3 events
+            "choices_made": len(state["story"]["choices_made"]),
+            "characters_met": list(state["characters"].keys()),
+            "locations_discovered": list(state["world"]["locations"].keys())
+        }
         
-        Player Choice: {choice_made}
-        Immediate Outcome: {immediate_outcome}
-        Current Story State: {story_state}
-        
-        Consider:
-        - How this choice affects the overall story arc
-        - What opportunities or problems this creates for later
-        - Character relationship changes
-        - World state changes
-        - Potential plot branches this opens or closes
-        
-        Think about both positive and negative consequences that feel earned.
-        """
-        
-        return task_description
+        return json.dumps(summary, indent=2)
+
+class CreateStoryNarrativeTool(BaseTool):
+    name: str = "create_story_narrative"
+    description: str = "Generate a narrative summary of the player's adventure using all game data"
     
-    def create_story_climax(self, story_history: List[str], 
-                          character_relationships: Dict[str, str],
-                          player_choices_summary: str) -> str:
-        """
-        Create a climactic moment based on the accumulated story
+    def _run(self) -> str:
+        """Create a comprehensive narrative summary of the adventure"""
+        summary_data = game_state.get_story_summary_data()
         
-        Args:
-            story_history: Full story progression so far
-            character_relationships: Current state of all relationships
-            player_choices_summary: Summary of key player decisions
-            
-        Returns:
-            Climactic scene that pays off the story setup
-        """
-        task_description = f"""
-        Create a climactic scene that brings together the story elements.
+        narrative_prompt = f"""
+        Create an engaging narrative summary of this interactive fiction adventure:
         
-        Story So Far: {story_history}
-        Character Relationships: {character_relationships}
-        Key Player Choices: {player_choices_summary}
+        SESSION INFO:
+        - Duration: {summary_data['session_info']['duration_minutes']} minutes
+        - Player: {summary_data['player']['name']}
+        - Current Location: {summary_data['player']['location']}
         
-        Design a climactic moment that:
-        - Pays off the major story threads
-        - Reflects the consequences of player choices
-        - Involves characters in meaningful ways
-        - Creates a satisfying dramatic peak
-        - Sets up a resolution that feels earned
+        LOCATIONS EXPLORED:
+        {', '.join(summary_data['locations_visited'])}
         
-        Make the climax feel like the natural result of everything that came before.
+        CHARACTERS MET:
+        {', '.join(summary_data['characters_met']) if summary_data['characters_met'] else 'None yet'}
+        
+        STORY EVENTS:
+        {chr(10).join(summary_data['story_events'])}
+        
+        CHOICES MADE:
+        {chr(10).join(summary_data['choices_made']) if summary_data['choices_made'] else 'No major choices yet'}
+        
+        Write a compelling 2-3 paragraph narrative that captures the essence of this adventure,
+        highlighting key moments, character interactions, and the player's journey so far.
+        Make it feel like an epic tale!
         """
         
-        return task_description
+        # Log the summarization request
+        game_state.log_event("Story narrative summary requested")
+        
+        return narrative_prompt
+
+def create_story_director_agent():
+    """Create the Story Agent with tools"""
+    
+    story_director = Agent(
+        role="Story Agent",
+        goal="Create compelling narrative arcs and meaningful player choices that drive the story forward",
+        backstory="""You are a master storyteller who crafts engaging interactive narratives. 
+        You understand pacing, character development, and how player choices affect story outcomes. 
+        You create meaningful decisions that impact the game world and story progression.
+        You have tools to manage story events, choices, and narrative progression.""",
+        tools=[
+            CreateStoryChoicesTool(),
+            AdvanceStoryTool(),
+            GetStoryContextTool(),
+            RecordPlayerChoiceTool(),
+            GetStorySummaryTool(),
+            CreateStoryNarrativeTool()
+        ],
+        verbose=True,
+        allow_delegation=False
+    )
+    
+    return story_director
+
+def create_story_task(user_input: str, specific_request: str = None):
+    """Create a task for the Story Agent"""
+    
+    request = specific_request or f"Handle narrative aspects of: {user_input}"
+    
+    task = Task(
+        description=f"""
+        {request}
+        
+        You have access to these tools:
+        - create_story_choices: Create meaningful choices for players
+        - advance_story: Add new story events
+        - get_story_context: Check current narrative state
+        - record_player_choice: Track player decisions
+        - get_story_summary: Get overview of story progress
+        
+        Use your tools to create engaging narrative moments and meaningful player agency.
+        """,
+        agent=create_story_director_agent(),
+        expected_output="Story progression with events and choices that enhance the narrative"
+    )
+    
+    return task

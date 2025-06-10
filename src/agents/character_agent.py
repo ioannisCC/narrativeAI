@@ -1,130 +1,136 @@
-from crewai import Agent
-from typing import Dict, List, Any
+from crewai import Agent, Task
+from crewai.tools import BaseTool
+import json
+from game_state import game_state
 
+class CreateCharacterTool(BaseTool):
+    name: str = "create_character"
+    description: str = "Create a new NPC character in the game world"
+    
+    def _run(self, character_info: str) -> str:
+        """Create a new character/NPC in the game."""
+        try:
+            # Handle both JSON and simple string input
+            if isinstance(character_info, str):
+                try:
+                    character_data = json.loads(character_info)
+                except json.JSONDecodeError:
+                    # If not JSON, return error with format help
+                    return "Error: character_info must be JSON format like {\"name\": \"character_name\", \"location\": \"place\", \"personality\": \"trait\", \"description\": \"character description\"}"
+            else:
+                character_data = character_info
+                
+            character_name = character_data.get("name")
+            if not character_name:
+                return "Error: character must have a name"
+                
+            game_state.add_character(character_name, character_data)
+            return f"Successfully created character: {character_name}"
+        except Exception as e:
+            return f"Error creating character: {str(e)}"
 
-class CharacterAgent:
-    """
-    The Character Agent creates and manages NPCs (Non-Player Characters),
-    their personalities, dialogue, and interactions. This agent focuses
-    on bringing characters to life and creating meaningful relationships.
-    """
+class GetCharactersTool(BaseTool):
+    name: str = "get_characters"
+    description: str = "Get all characters currently in the game"
     
-    def __init__(self, llm=None):
-        self.agent = Agent(
-            role='Character Creator & Personality Manager',
-            goal='''Create memorable, believable characters with distinct personalities, 
-                    motivations, and dialogue patterns. Manage character interactions 
-                    and relationships that drive the story forward.''',
-            backstory='''You are a character psychologist and dialogue expert who 
-                        understands what makes characters feel real and engaging. 
-                        You've studied human behavior, personality types, and social 
-                        dynamics. You excel at creating diverse characters with unique 
-                        voices, motivations, and flaws that make them interesting. 
-                        Every character you create feels like a real person with their 
-                        own agenda and personality.''',
-            verbose=True,
-            allow_delegation=False,
-            llm=llm
-        )
+    def _run(self) -> str:
+        """Get all characters in the game"""
+        characters = game_state.get_state()["characters"]
+        return json.dumps(characters, indent=2)
+
+class AddDialogueTool(BaseTool):
+    name: str = "add_dialogue"
+    description: str = "Add dialogue options to an existing character"
     
-    def create_character(self, character_type: str, story_context: str, 
-                        personality_traits: List[str] = None) -> str:
-        """
-        Generate a new character with personality and background
-        
-        Args:
-            character_type: Type of character (ally, enemy, merchant, etc.)
-            story_context: Current story situation
-            personality_traits: Optional specific traits to include
+    def _run(self, dialogue_info: str) -> str:
+        """Add dialogue options to a character."""
+        try:
+            # Handle both JSON and simple string input
+            if isinstance(dialogue_info, str):
+                try:
+                    data = json.loads(dialogue_info)
+                except json.JSONDecodeError:
+                    # If not JSON, return error with format help
+                    return "Error: dialogue_info must be JSON format like {\"character\": \"name\", \"dialogue\": \"text\", \"response_to\": \"situation\"}"
+            else:
+                data = dialogue_info
+                
+            character_name = data.get("character")
+            dialogue = data.get("dialogue")
+            response_to = data.get("response_to", "general")
             
-        Returns:
-            Character description and personality profile
-        """
-        traits = personality_traits or ["determined", "curious", "cautious"]
-        traits_str = ", ".join(traits)
-        
-        task_description = f"""
-        Create a {character_type} character for an interactive fiction story.
-        
-        Story Context: {story_context}
-        Suggested Personality Traits: {traits_str}
-        
-        Generate:
-        - Name and brief physical description (1-2 sentences)
-        - Personality summary (2-3 key traits with examples)
-        - Current motivation or goal
-        - A unique speaking pattern or mannerism
-        - How they might react to the player character
-        
-        Make the character feel real and memorable, with clear motivations.
-        """
-        
-        return task_description
+            characters = game_state.get_state()["characters"]
+            if character_name in characters:
+                if "dialogue_options" not in characters[character_name]:
+                    characters[character_name]["dialogue_options"] = {}
+                characters[character_name]["dialogue_options"][response_to] = dialogue
+                game_state.log_event(f"Added dialogue to {character_name}")
+                return f"Added dialogue to {character_name}"
+            else:
+                return f"Character {character_name} does not exist"
+        except Exception as e:
+            return f"Error adding dialogue: {str(e)}"
+
+class GetCharactersInLocationTool(BaseTool):
+    name: str = "get_characters_in_location"
+    description: str = "Get all characters present in a specific location"
     
-    def generate_dialogue(self, character_name: str, character_personality: str,
-                         situation: str, player_action: str = None) -> str:
-        """
-        Generate character dialogue based on personality and situation
+    def _run(self, location: str) -> str:
+        """Get characters present in a specific location"""
+        characters = game_state.get_state()["characters"]
+        chars_in_location = []
         
-        Args:
-            character_name: Name of the speaking character
-            character_personality: Brief personality description
-            situation: Current story situation
-            player_action: What the player just did (optional)
-            
-        Returns:
-            Character dialogue appropriate to their personality
-        """
-        action_context = f"Player just: {player_action}" if player_action else ""
+        for char_name, char_data in characters.items():
+            if char_data.get("location") == location:
+                chars_in_location.append({
+                    "name": char_name,
+                    "description": char_data.get("description", ""),
+                    "personality": char_data.get("personality", "")
+                })
         
-        task_description = f"""
-        Generate dialogue for {character_name} in the current situation.
-        
-        Character Personality: {character_personality}
-        Current Situation: {situation}
-        {action_context}
-        
-        Requirements:
-        - Stay true to the character's established personality
-        - 1-3 sentences of dialogue
-        - Include character-appropriate speech patterns
-        - Advance the conversation or story
-        - Provide potential response options for the player
-        
-        Format: Direct dialogue in quotes, plus brief action description if needed.
-        """
-        
-        return task_description
+        return json.dumps(chars_in_location, indent=2)
+
+def create_character_manager_agent():
+    """Create the Character Agent with tools"""
     
-    def manage_character_relationship(self, character_name: str, 
-                                    relationship_status: str,
-                                    recent_interactions: List[str]) -> str:
-        """
-        Update character relationship based on player interactions
+    character_manager = Agent(
+        role="Character Agent",
+        goal="Create memorable NPCs and manage character interactions and dialogue",
+        backstory="""You are a skilled character designer who creates compelling NPCs with 
+        distinct personalities, interesting backstories, and engaging dialogue. You understand 
+        how characters drive narrative and create meaningful interactions for players.
+        You have tools to create characters, manage dialogue, and track character locations.""",
+        tools=[
+            CreateCharacterTool(),
+            GetCharactersTool(),
+            AddDialogueTool(),
+            GetCharactersInLocationTool()
+        ],
+        verbose=True,
+        allow_delegation=False
+    )
+    
+    return character_manager
+
+def create_character_task(user_input: str, specific_request: str = None):
+    """Create a task for the Character Agent"""
+    
+    request = specific_request or f"Handle character aspects of: {user_input}"
+    
+    task = Task(
+        description=f"""
+        {request}
         
-        Args:
-            character_name: Name of the character
-            relationship_status: Current relationship state
-            recent_interactions: List of recent player choices affecting this character
-            
-        Returns:
-            Updated relationship description and character attitude
-        """
-        interactions_str = "; ".join(recent_interactions)
+        You have access to these tools:
+        - create_character: Create new NPCs with JSON format
+        - get_characters: See all existing characters
+        - add_dialogue: Add dialogue options to characters
+        - get_characters_in_location: Find characters in specific locations
         
-        task_description = f"""
-        Update the relationship between the player and {character_name}.
-        
-        Current Relationship: {relationship_status}
-        Recent Player Actions: {interactions_str}
-        
-        Determine:
-        - How the character's attitude toward the player has changed
-        - New relationship status (friendly, neutral, suspicious, hostile, etc.)
-        - How this will affect future interactions
-        - Any special dialogue or behavior changes
-        
-        Be realistic about how relationships evolve based on actions.
-        """
-        
-        return task_description
+        Use your tools to create engaging character interactions and memorable NPCs.
+        """,
+        agent=create_character_manager_agent(),
+        expected_output="Description of character interactions and any new NPCs created"
+    )
+    
+    return task
