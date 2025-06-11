@@ -3,10 +3,8 @@ import os
 import json
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Import agents with detailed error handling
 IMPORTS_SUCCESSFUL = True
 import_errors = []
 
@@ -82,7 +80,7 @@ class InteractiveFictionCrew:
     
     def _generate_dynamic_starting_world(self):
         """
-        FIXED: Generate starting world using World Agent tools, then read from game_state
+        Generate starting world using World Agent tools, then read from game_state
         This prevents the "confabulation" issue by using single source of truth
         """
         print("🌍 Generating new adventure world with AI...")
@@ -108,15 +106,15 @@ class InteractiveFictionCrew:
                 verbose=False 
             )
             
-            # CRITICAL FIX: Agent modifies game_state through tools, we ignore its Final Answer
+            # Agent modifies game_state through tools, we ignore its Final Answer
             agent_result = world_crew.kickoff()  # Agent uses tools to save to game_state
             
-            # FIXED: Get the ground truth from game_state (single source of truth)
+            # Get the ground truth from game_state (single source of truth)
             # This ensures consistency with what the main game loop will display
             true_world_description = self.get_current_scene_description()
             
             print("\n✅ Dynamic starting world created:")
-            print(true_world_description)  # Display actual game_state data, not agent description
+            print(true_world_description)
             
             game_state.add_story_event("A new adventure begins in a uniquely generated world")
             
@@ -143,7 +141,7 @@ class InteractiveFictionCrew:
         current_location = state["player"]["location"]
         location_info = state["world"]["locations"].get(current_location, {})
         
-        # Check for characters in current location - CRITICAL for character continuity
+        # Check for characters in current location - character continuity
         characters_present = []
         for char_name, char_data in state["characters"].items():
             if char_data.get("location") == current_location:
@@ -158,7 +156,7 @@ class InteractiveFictionCrew:
             "characters_present": characters_present
         }
         
-        # 1. CHARACTER INTERACTION DETECTION (Fixes Zephyr problem!)
+        # 1. CHARACTER INTERACTION DETECTION
         character_keywords = ['ask', 'talk', 'speak', 'say', 'tell', 'greet', 'question', 'dialogue', 'chat']
         character_references = ['zephyr', 'npc', 'character', 'him', 'her', 'they', 'wizard', 'entity']
         choice_about_character = any(keyword in user_lower for keyword in ['option 1', 'choice 1']) and characters_present
@@ -198,12 +196,12 @@ class InteractiveFictionCrew:
         intent = self._analyze_user_intent(user_input)
         turn_info = game_state.get_turn_info()
         
-        # PRIORITY 1: CHARACTER INTERACTIONS (Fixes disappearing characters!)
+        # PRIORITY 1: CHARACTER INTERACTIONS
         if intent["character_interaction"]:
             print("👥 Activating Character Agent for NPC interaction...")
             agents = [self.coordinator_agent, self.character_agent]
             
-            # Also add Story Agent if this is a complex narrative moment
+            # Add Story Agent if this is a complex narrative moment
             if turn_info['current_turn'] > 2 or any(word in user_input.lower() for word in ['choose', 'option', 'enlightenment']):
                 agents.append(self.story_agent)
                 print("🎭 Adding Story Agent for enhanced character narrative...")
@@ -227,7 +225,7 @@ class InteractiveFictionCrew:
             print("🎭 Activating Story Agent for narrative development...")
             agents = [self.coordinator_agent, self.story_agent]
             
-            # Add Character Agent if characters are present (critical for continuity!)
+            # Add Character Agent if characters are present
             if intent["characters_present"]:
                 agents.append(self.character_agent)
                 print("👥 Adding Character Agent for character involvement...")
@@ -248,7 +246,7 @@ class InteractiveFictionCrew:
             if turn_info['current_turn'] > 1:
                 agents.append(self.story_agent)
                 
-            # Add Character Agent if characters present (prevents character disappearance!)
+            # Add Character Agent if characters present
             if intent["characters_present"]:
                 agents.append(self.character_agent)
                 print("👥 Including Character Agent due to characters present...")
@@ -399,7 +397,7 @@ class InteractiveFictionCrew:
         if exits:
             description += f"\nExits: {', '.join(exits)}\n"
         
-        # Add characters from game_state (CRITICAL for character continuity!)
+        # Add characters from game_state
         characters_here = []
         for char_name, char_data in state["characters"].items():
             if char_data.get("location") == current_location:

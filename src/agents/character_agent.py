@@ -135,12 +135,10 @@ def create_character_manager_agent():
         - get_characters_in_location: Find characters in specific places
         """,
         tools=[
-            # Your existing tools
             CreateCharacterTool(),
             GetCharactersTool(),
             AddDialogueTool(),
             GetCharactersInLocationTool(),
-            # New enhanced tools for interaction
             HandleCharacterDialogueTool(),
             GetCharacterContextTool(),
             MoveCharacterTool(),

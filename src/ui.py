@@ -1,5 +1,3 @@
-# minimal_ui.py - Ultra-simple UI without emojis
-
 import http.server
 import socketserver
 import json
@@ -8,227 +6,374 @@ import os
 import sys
 from urllib.parse import parse_qs
 
-# Setup
+# Setup paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
-# Try to import game - if it fails, use dummy mode
+# Import game modules
 try:
     from crew import fiction_crew
     from game_state import game_state
-    GAME_WORKING = True
-    print("Game modules loaded!")
+    GAME_READY = True
+    print("Game loaded successfully")
 except Exception as e:
-    print(f"Game modules failed, using demo mode: {e}")
-    GAME_WORKING = False
-
-# Simple game state for demo mode
-demo_state = {
-    'started': False,
-    'player_name': '',
-    'messages': [],
-    'turn': 0
-}
+    print(f"Failed to load game: {e}")
+    GAME_READY = False
+    sys.exit(1)
 
 # Simple HTML interface
-HTML = """<!DOCTYPE html>
-<html><head>
-<title>Narrative AI</title>
-<style>
-body { font-family: Arial; background: linear-gradient(45deg, #667eea, #764ba2); color: white; margin: 0; padding: 20px; }
-.container { max-width: 800px; margin: 0 auto; }
-.panel { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 10px 0; }
-.chat { height: 300px; overflow-y: scroll; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 5px; margin: 10px 0; }
-.message { margin: 10px 0; padding: 10px; border-radius: 5px; }
-.user { background: rgba(100,149,237,0.3); text-align: right; }
-.ai { background: rgba(152,251,152,0.3); }
-input[type=text] { width: 70%; padding: 10px; border: none; border-radius: 5px; }
-button { padding: 10px 15px; border: none; border-radius: 5px; background: #4CAF50; color: white; cursor: pointer; margin: 5px; }
-button:hover { background: #45a049; }
-.status { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
-</style>
-</head><body>
-<div class="container">
-  <div class="panel" style="text-align: center;">
-    <h1>Narrative AI</h1>
-    <p>Multi-Agent Storytelling Experience</p>
-  </div>
-  
-  <div id="start-screen" class="panel">
-    <h2>Begin Your Adventure</h2>
-    <input type="text" id="name" placeholder="Enter your name..." />
-    <button onclick="startGame()">Start</button>
-  </div>
-  
-  <div id="game-screen" class="panel" style="display:none;">
-    <div class="chat" id="chat"></div>
-    <input type="text" id="command" placeholder="What do you want to do?" onkeypress="if(event.key=='Enter')sendCommand()" />
-    <button onclick="sendCommand()">Send</button>
-    <br>
-    <button onclick="quickCmd('look around')">Look Around</button>
-    <button onclick="quickCmd('go north')">Go North</button>
-    <button onclick="quickCmd('status')">Status</button>
-    <button onclick="quickCmd('help')">Help</button>
-    
-    <div class="status" id="status">
-      <div>Player: <span id="player-name">-</span></div>
-      <div>Turn: <span id="turn">0</span>/5</div>
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html>
+<head>
+    <title>Interactive Fiction</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+        .game-output {
+            background: #000;
+            color: #00ff00;
+            padding: 15px;
+            height: 400px;
+            overflow-y: scroll;
+            font-family: monospace;
+            margin: 10px 0;
+            border: 1px solid #333;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            font-family: monospace;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 8px 15px;
+            background: #007cba;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #005a87;
+        }
+        .status {
+            background: #eee;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+        }
+        .start-screen {
+            text-align: center;
+            padding: 40px;
+        }
+        .game-screen {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="start-screen" class="start-screen">
+            <h1>Interactive Fiction Engine</h1>
+            <p>Enter your name to begin:</p>
+            <input type="text" id="player-name" placeholder="Your name">
+            <br><br>
+            <button onclick="startGame()">Start Game</button>
+        </div>
+        
+        <div id="game-screen" class="game-screen">
+            <div class="status">
+                Player: <span id="status-name"></span> | 
+                Turn: <span id="status-turn">0</span>/5 | 
+                Location: <span id="status-location"></span>
+            </div>
+            
+            <div class="game-output" id="output"></div>
+            
+            <div class="input-area">
+                <input type="text" id="command-input" placeholder="Enter command" onkeypress="handleKeyPress(event)">
+                <button onclick="sendCommand()">Send</button>
+            </div>
+            
+            <div>
+                <button onclick="quickCommand('look around')">Look</button>
+                <button onclick="quickCommand('status')">Status</button>
+                <button onclick="quickCommand('help')">Help</button>
+                <button onclick="quickCommand('quit')">Quit</button>
+            </div>
+        </div>
     </div>
-  </div>
-</div>
 
-<script>
-function startGame() {
-  const name = document.getElementById('name').value;
-  if (!name) { alert('Enter your name!'); return; }
-  
-  fetch('/start', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: name})
-  }).then(r => r.json()).then(data => {
-    if (data.success) {
-      document.getElementById('start-screen').style.display = 'none';
-      document.getElementById('game-screen').style.display = 'block';
-      document.getElementById('player-name').textContent = name;
-      addMessage('Game Master', data.message);
-    }
-  });
-}
+    <script>
+        function startGame() {
+            const name = document.getElementById('player-name').value.trim();
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+            
+            fetch('/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('start-screen').style.display = 'none';
+                    document.getElementById('game-screen').style.display = 'block';
+                    document.getElementById('status-name').textContent = name;
+                    updateStatus(data.status);
+                    addOutput('GAME', data.initial_scene);
+                } else {
+                    alert('Failed to start game: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error: ' + error);
+            });
+        }
+        
+        function sendCommand() {
+            const input = document.getElementById('command-input');
+            const command = input.value.trim();
+            if (!command) return;
+            
+            addOutput('YOU', command);
+            input.value = '';
+            
+            fetch('/command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({command: command})
+            })
+            .then(response => response.json())
+            .then(data => {
+                addOutput('GAME', data.response);
+                updateStatus(data.status);
+                
+                if (data.game_ended) {
+                    addOutput('SYSTEM', 'Game Over. Refresh page to play again.');
+                    document.getElementById('command-input').disabled = true;
+                }
+            })
+            .catch(error => {
+                addOutput('ERROR', 'Failed to process command: ' + error);
+            });
+        }
+        
+        function quickCommand(cmd) {
+            document.getElementById('command-input').value = cmd;
+            sendCommand();
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendCommand();
+            }
+        }
+        
+        function addOutput(sender, text) {
+            const output = document.getElementById('output');
+            
+            // Add spacing before each message for readability
+            const spacer = document.createElement('div');
+            spacer.innerHTML = '&nbsp;';
+            output.appendChild(spacer);
+            
+            const line = document.createElement('div');
+            line.textContent = sender + ': ' + text;
+            output.appendChild(line);
+            
+            // Add extra spacing after GAME messages
+            if (sender === 'GAME') {
+                const extraSpacer = document.createElement('div');
+                extraSpacer.innerHTML = '&nbsp;';
+                output.appendChild(extraSpacer);
+            }
+            
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function updateStatus(status) {
+            if (status) {
+                if (status.turn) {
+                    document.getElementById('status-turn').textContent = status.turn;
+                }
+                if (status.location) {
+                    document.getElementById('status-location').textContent = status.location;
+                }
+            }
+        }
+    </script>
+</body>
+</html>"""
 
-function sendCommand() {
-  const cmd = document.getElementById('command').value;
-  if (!cmd) return;
-  
-  addMessage('You', cmd);
-  document.getElementById('command').value = '';
-  
-  fetch('/command', {
-    method: 'POST', 
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({command: cmd})
-  }).then(r => r.json()).then(data => {
-    addMessage('AI Narrator', data.response);
-    document.getElementById('turn').textContent = data.turn;
-  });
-}
-
-function quickCmd(cmd) {
-  document.getElementById('command').value = cmd;
-  sendCommand();
-}
-
-function addMessage(sender, text) {
-  const chat = document.getElementById('chat');
-  const msg = document.createElement('div');
-  msg.className = 'message ' + (sender.includes('You') ? 'user' : 'ai');
-  msg.innerHTML = '<strong>' + sender + ':</strong><br>' + text;
-  chat.appendChild(msg);
-  chat.scrollTop = chat.scrollHeight;
-}
-</script>
-</body></html>"""
-
-class SimpleHandler(http.server.SimpleHTTPRequestHandler):
+class GameHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
-            self.wfile.write(HTML.encode())
+            self.wfile.write(HTML_TEMPLATE.encode())
         else:
-            super().do_GET()
+            self.send_response(404)
+            self.end_headers()
     
     def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        data = json.loads(post_data.decode('utf-8'))
-        
-        response = {}
-        
-        if self.path == '/start':
-            name = data.get('name', 'Hero')
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
             
-            if GAME_WORKING:
-                try:
-                    game_state.update_player({"name": name})
-                    scene = fiction_crew.get_current_scene_description()
-                    response = {
-                        'success': True, 
-                        'message': f'Welcome {name}! Your adventure begins...\n\n{scene}'
-                    }
-                except Exception as e:
-                    response = {'success': True, 'message': f'Welcome {name}! (Demo mode: {e})'}
+            if self.path == '/start':
+                response = self.handle_start(data)
+            elif self.path == '/command':
+                response = self.handle_command(data)
             else:
-                demo_state['started'] = True
-                demo_state['player_name'] = name
-                response = {
-                    'success': True,
-                    'message': f'Welcome {name}! You are in a mystical forest. (Demo Mode - Game modules not loaded)'
-                }
-        
-        elif self.path == '/command':
-            command = data.get('command', '')
+                response = {'success': False, 'error': 'Unknown endpoint'}
             
-            if GAME_WORKING:
-                try:
-                    demo_state['turn'] += 1
-                    if command.lower() not in ['look', 'status', 'help']:
-                        game_state.increment_turn()
-                    
-                    ai_response = fiction_crew.process_user_input(command)
-                    turn_info = game_state.get_turn_info()
-                    
-                    response = {
-                        'response': ai_response,
-                        'turn': turn_info['current_turn']
-                    }
-                except Exception as e:
-                    response = {
-                        'response': f'Error: {e}',
-                        'turn': demo_state['turn']
-                    }
-            else:
-                # Demo responses
-                demo_state['turn'] += 1
-                demo_responses = {
-                    'look': 'You see a beautiful forest with tall trees and mysterious shadows.',
-                    'go north': 'You walk north through the forest.',
-                    'status': f"You are {demo_state['player_name']}, healthy and ready for adventure!",
-                    'help': 'Try: look, go north, status, or describe what you want to do.'
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            error_response = {'success': False, 'error': str(e)}
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_response).encode())
+    
+    def handle_start(self, data):
+        try:
+            player_name = data.get('name', 'Player')
+            
+            # Initialize player in game state
+            game_state.update_player({"name": player_name})
+            
+            # Get initial scene
+            initial_scene = fiction_crew.get_current_scene_description()
+            
+            # Get current status
+            state = game_state.get_state()
+            turn_info = game_state.get_turn_info()
+            
+            status = {
+                'turn': f"{turn_info['current_turn']}/{turn_info['max_turns']}",
+                'location': state['player']['location']
+            }
+            
+            return {
+                'success': True,
+                'initial_scene': initial_scene,
+                'status': status
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def handle_command(self, data):
+        try:
+            command = data.get('command', '').strip()
+            
+            if not command:
+                return {'response': 'Please enter a command', 'status': self.get_status()}
+            
+            # Handle quit command
+            if command.lower() in ['quit', 'exit']:
+                return {
+                    'response': 'Thanks for playing!',
+                    'status': self.get_status(),
+                    'game_ended': True
                 }
+            
+            # Handle status command
+            if command.lower() == 'status':
+                state = game_state.get_state()
+                player = state['player']
+                turn_info = game_state.get_turn_info()
                 
-                demo_response = demo_responses.get(command.lower(), f'You {command}. The forest responds with mysterious energy.')
-                response = {
-                    'response': demo_response + ' (Demo Mode)',
-                    'turn': demo_state['turn']
+                status_text = f"Name: {player['name']}\n"
+                status_text += f"Location: {player['location']}\n"
+                status_text += f"Health: {player['health']}\n"
+                status_text += f"Turn: {turn_info['current_turn']}/{turn_info['max_turns']}\n"
+                status_text += f"Phase: {turn_info['phase']}"
+                
+                return {
+                    'response': status_text,
+                    'status': self.get_status(),
+                    'game_ended': game_state.is_game_ended()
                 }
-        
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps(response).encode())
+            
+            # Process command through game system (it handles turn incrementing)
+            response = fiction_crew.process_user_input(command)
+            
+            return {
+                'response': response,
+                'status': self.get_status(),
+                'game_ended': game_state.is_game_ended()
+            }
+            
+        except Exception as e:
+            return {
+                'response': f"Error processing command: {str(e)}",
+                'status': self.get_status(),
+                'game_ended': False
+            }
+    
+    def get_status(self):
+        try:
+            state = game_state.get_state()
+            turn_info = game_state.get_turn_info()
+            
+            # Format location name nicely
+            location = state['player']['location'] or 'Unknown'
+            if location != 'Unknown':
+                location = location.replace('_', ' ').title()
+            
+            return {
+                'turn': f"{turn_info['current_turn']}/{turn_info['max_turns']}",
+                'location': location
+            }
+        except Exception as e:
+            print(f"Error getting status: {e}")
+            return {'turn': '0/5', 'location': 'Unknown'}
 
 def main():
-    PORT = 8081
+    if not GAME_READY:
+        print("Game not ready. Exiting.")
+        return
     
-    print("Starting Narrative AI...")
+    PORT = 8080
+    
+    print(f"Starting Interactive Fiction UI on port {PORT}")
     print(f"Open http://localhost:{PORT} in your browser")
     
-    if GAME_WORKING:
-        print("Full game mode enabled!")
-    else:
-        print("Demo mode - game modules not loaded")
-    
-    # Open browser
+    # Open browser automatically
     webbrowser.open(f'http://localhost:{PORT}')
     
     # Start server
-    with socketserver.TCPServer(("", PORT), SimpleHandler) as httpd:
+    with socketserver.TCPServer(("", PORT), GameHandler) as httpd:
         try:
+            print("Server running. Press Ctrl+C to stop.")
             httpd.serve_forever()
         except KeyboardInterrupt:
-            print("\nGoodbye!")
+            print("\nServer stopped.")
 
 if __name__ == "__main__":
     main()
