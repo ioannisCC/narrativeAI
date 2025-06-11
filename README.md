@@ -1,36 +1,36 @@
-# Interactive Fiction Engine 🎮
+# Interactive Fiction Engine
 
 A multi-agent interactive fiction system powered by CrewAI and OpenAI, designed for the Intelligent Agents course assignment 2025.
 
-## 🌟 Overview
+## Overview
 
-This project implements a sophisticated multi-agent system that creates dynamic interactive fiction experiences. Four specialized AI agents collaborate to generate immersive storytelling:
+This project implements a sophisticated multi-agent system that creates dynamic, choice-driven interactive fiction experiences. Four specialized AI agents collaborate through intelligent delegation to generate immersive 5-turn storytelling adventures:
 
-- **🏗️ World Builder Agent** - Creates locations, environments, and manages the game world
-- **👥 Character Manager Agent** - Handles NPCs, dialogue, and character interactions  
-- **📖 Story Director Agent** - Manages plot progression, choices, and narrative consistency
-- **🎯 Game Coordinator Agent** - Orchestrates agent collaboration and user interaction
+- **Game Coordinator** - Intelligently analyzes user input and delegates to appropriate agents
+- **World Builder** - Creates detailed locations, environments, and manages the game world
+- **Character Manager** - Handles NPCs, dialogue, and character interactions with continuity
+- **Story Director** - Manages plot progression, meaningful choices, and narrative flow
 
-## 🎯 Assignment Requirements Met
+## Assignment Requirements Met
 
-✅ **Multi-agent collaboration** - 4 agents working together in structured workflow  
-✅ **LLM-based system** - Uses OpenAI GPT models through CrewAI framework  
-✅ **Agent communication** - Shared game state and inter-agent delegation  
-✅ **User interaction** - Command-line interface for player input/output  
-✅ **Complex problem solving** - Dynamic storytelling and world building  
-✅ **Working memory/state** - Persistent game state across all agents  
-✅ **Tool usage** - Custom tools + web search capabilities  
+✅ **Multi-agent collaboration** - 4 agents working together through structured workflow  
+✅ **LLM-based system** - Uses OpenAI GPT-4 models through CrewAI framework  
+✅ **Effective agent communication** - Single Source of Truth GameState architecture  
+✅ **User interaction** - Simple web interface for player input/output  
+✅ **Complex problem solving** - Dynamic storytelling with intelligent agent selection  
+✅ **Working memory/state** - Persistent game state managed across all agents  
+✅ **Custom tools** - Specialized tools for each agent to modify shared state
 
-## 🚀 Features
+## Key Features
 
-- **Dynamic World Generation** - Agents create locations and environments on-demand
-- **Interactive NPCs** - Character agents generate dialogue and personalities
-- **Branching Narratives** - Story choices that affect game progression
-- **Persistent Game State** - All agents share and update game world state
-- **Web-Enhanced Content** - Agents can search web for inspiration
-- **Real-time Collaboration** - Agents work together to respond to player actions
+- **Intelligent Agent Selection** - Coordinator analyzes intent and selects appropriate agents
+- **Single Source of Truth** - All agents read/write to shared GameState for consistency
+- **Dynamic World Generation** - World Builder creates unique locations based on player choices
+- **Character Continuity** - Character Manager maintains NPC presence and dialogue consistency
+- **5-Turn Adventure Structure** - Story progression through beginning → middle → late → climax phases
+- **Simple Web Interface** - Clean, terminal-style UI for easy interaction
 
-## 📋 Setup Instructions
+## Setup Instructions
 
 ### 1. Install Dependencies
 
@@ -44,117 +44,133 @@ Create a `.env` file in the project root:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL_NAME=gpt-3.5-turbo
 ```
 
-### 3. Run the Game
+### 3. Run the System
 
+For simple web interface:
+```bash
+python simple_ui.py
+```
+
+For command-line interface:
 ```bash
 python main.py
 ```
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
-fiction_engine/
+src/
 ├── requirements.txt          # Python dependencies
 ├── .env                     # API keys (create this)
-├── main.py                  # Main game loop and UI
+├── main.py                  # Command-line game loop
+├── simple_ui.py            # Web interface
 ├── crew.py                  # Multi-agent crew orchestration
-├── game_state.py           # Shared state management
-├── agents/
-│   ├── world_builder.py    # World/environment agent
-│   ├── character_manager.py # NPC and dialogue agent
-│   ├── story_director.py   # Plot and narrative agent
-│   └── game_coordinator.py # Coordination agent
-└── README.md               # This file
+├── game_state.py           # Single Source of Truth state management
+└── agents/
+    ├── __init__.py         # Agent exports
+    ├── coordinator_agent.py # Intelligent coordination and delegation
+    ├── world_agent.py      # Dynamic world creation
+    ├── character_agent.py  # NPC management and dialogue
+    └── story_agent.py      # Plot progression and choices
 ```
 
-## 🎮 How to Play
+## How to Play
 
-The game starts in a forest clearing. You can interact using natural language commands:
+The game starts with a dynamically generated world. Each playthrough creates a unique 5-turn adventure:
 
-### Movement Commands
-- `go north` - Move to another location
-- `travel east` - Travel in a direction
-- `enter cave` - Enter specific locations
+### Available Commands
+- **Movement**: `go north`, `travel east`, `enter cave`
+- **Exploration**: `look around`, `examine room`, `inspect item`
+- **Interaction**: `talk to wizard`, `speak with character`, `ask about quest`
+- **System**: `status`, `help`, `quit`
 
-### Interaction Commands  
-- `look around` - Examine surroundings
-- `talk to wizard` - Speak with NPCs
-- `take sword` - Pick up items
-- `examine map` - Look at specific objects
+### Game Flow
+1. **Turn 0**: Dynamic world generation and initial scene
+2. **Turns 1-5**: Player choices shape the unique narrative
+3. **End**: Comprehensive story summary and epilogue generation
 
-### System Commands
-- `status` - Check player status
-- `help` - Show available commands
-- `quit` - Exit the game
+## Technical Architecture
 
-## 🤖 Agent Workflow
+### Multi-Agent Coordination
+- **Intelligent Delegation** - Coordinator uses intent analysis to select agents
+- **Sequential Processing** - Agents work in coordinated sequence through CrewAI
+- **GameState Integration** - All agents use tools to modify shared state
+- **Character Continuity** - System tracks NPC presence and prevents disappearance
 
-1. **User Input** → Game Coordinator analyzes the command
-2. **Coordination** → Determines which agents are needed
-3. **Parallel Processing** → Relevant agents work on their aspects
-4. **Integration** → Coordinator combines all agent outputs
-5. **Response** → Cohesive story response delivered to player
+### Single Source of Truth
+```
+Agent Tools → GameState (Shared State) ← All Agents Read From
+```
 
-## 🛠️ Technical Implementation
+- **Locations**: World data stored centrally
+- **Characters**: NPC data with location tracking  
+- **Story Events**: Narrative progression logged
+- **Player State**: Location, inventory, choices tracked
 
-### Multi-Agent Architecture
-- **CrewAI Framework** - Manages agent collaboration
-- **Sequential Processing** - Agents work in coordinated sequence
-- **Shared State** - Global game state accessible to all agents
-- **Tool Integration** - Custom tools + web search capabilities
+### Agent Specialization
 
-### State Management
-- **Persistent World** - Locations, items, and NPCs maintained
-- **Player Progress** - Choices, inventory, and stats tracked
-- **Story Events** - Narrative progression logged
-- **Agent Memory** - Each agent has access to full context
+**Game Coordinator**
+- Intent analysis and agent selection
+- Simple request handling
+- GameState status reporting
 
-### Agent Communication
-- **Direct Tool Calls** - Agents use shared state tools
-- **Delegation** - Coordinator can delegate to specialists
-- **Context Sharing** - All agents see current game state
-- **Event Logging** - Actions recorded for continuity
+**World Builder**  
+- `create_starting_world` - Generates unique themed worlds
+- `create_location` - Adds new areas dynamically
+- `move_player` - Updates player location
 
-## 📊 Team Member Contributions
+**Character Manager**
+- `create_character` - Adds NPCs to scenes
+- `handle_character_dialogue` - Processes conversations
+- `get_character_context` - Maintains continuity
 
-- **Member 1** - World Builder Agent & environment systems
-- **Member 2** - Character Manager Agent & NPC interactions
-- **Member 3** - Story Director Agent & narrative engine
-- **Member 4** - Game Coordinator Agent & system integration
+**Story Director**
+- `create_story_choices` - Generates meaningful options
+- `advance_story` - Progresses narrative
+- `create_story_narrative` - Generates summaries and conclusions
 
-## 🔧 Dependencies
+## Problems Solved
 
-- `crewai` - Multi-agent framework
-- `openai` - LLM integration
-- `python-dotenv` - Environment configuration
-- `langchain` - LLM tooling support
-- `pydantic` - Data validation
+### 1. Agent Confabulation
+**Problem**: Agents generated descriptions inconsistent with actual GameState  
+**Solution**: Single Source of Truth architecture - all descriptions read from GameState
 
-## 🎯 Future Enhancements
+### 2. Character Continuity  
+**Problem**: NPCs disappeared between turns without explanation  
+**Solution**: Intelligent agent selection automatically includes Character Manager when NPCs present
 
-- **GUI Interface** - Web-based or desktop interface
+### 3. Turn Counting Issues
+**Problem**: UI and game system both incremented turns causing confusion  
+**Solution**: Centralized turn management in main game system only
+
+### 4. UI Readability
+**Problem**: Poor message separation in terminal output  
+**Solution**: Automatic spacing between USER and GAME messages
+
+## Key Achievements
+
+- **Seamless Agent Collaboration** - 4 agents working through intelligent delegation
+- **Consistent World State** - Single Source of Truth prevents contradictions  
+- **Dynamic Content Generation** - Unique worlds and stories each playthrough
+- **Character Continuity** - NPCs maintain presence and personality
+- **Simple Yet Functional UI** - Clean web interface with terminal aesthetics
+
+## Future Enhancements
+
+- **Extended Turn Limits** - Longer adventures with chapter progression
 - **Save/Load System** - Persistent game sessions
-- **Advanced NPCs** - More complex character behaviors
-- **Multimedia Content** - Images and audio integration
-- **Multiplayer Support** - Multiple players in same world
+- **Enhanced UI** - Improved styling and mobile support
+- **Image Generation** - Visual representations of scenes
+- **Multiplayer Support** - Shared world experiences
 
-## 📝 Assignment Deliverables
+## Assignment Deliverables
 
-1. **✅ Source Code** - Complete implementation in GitHub repo
-2. **✅ Technical Report** - Architecture and implementation details  
-3. **✅ Demo Video** - Working system demonstration
-
-## 🏆 Key Achievements
-
-- **Seamless Agent Collaboration** - 4 agents working in harmony
-- **Dynamic Content Generation** - Story elements created on-demand
-- **Persistent Game World** - Consistent state across all interactions
-- **Natural Language Interface** - Intuitive player commands
-- **Extensible Architecture** - Easy to add new agents/features
+1. **Source Code** - Complete implementation with all agents and tools
+2. **Technical Report** - Architecture documentation with flow diagrams  
+3. **Demo Video** - Working system demonstration with agent coordination
 
 ---
 
-*Built with ❤️ for the Intelligent Agents course - demonstrating the power of multi-agent collaboration in interactive storytelling.*
+*Interactive Fiction Engine - Demonstrating intelligent multi-agent collaboration for dynamic storytelling through CrewAI framework.*
