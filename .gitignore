@@ -4,3 +4,6 @@ structure
 story_images/
 *.log
 venv/
+*.zip
+assignment/
+*.mp4

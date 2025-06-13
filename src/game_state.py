@@ -48,14 +48,14 @@ class GameState:
         self.state = {
             "player": {
                 "name": "",
-                "location": None,  # Will be set dynamically when world is created
+                "location": None, 
                 "inventory": [],
                 "health": 100,
                 "experience": 0
             },
             "world": {
-                "locations": {},  # This is where World Agent saves all location data
-                "current_location": None  # Will be set dynamically
+                "locations": {},  
+                "current_location": None  
             },
             "characters": {},
             "story": {
